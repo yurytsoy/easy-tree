@@ -1,15 +1,20 @@
-[tool.poetry]
+[project]
 name = "easy-tree"
-version = "1.0.0"
-description = "Easy to use implementation of decision tree for classification and regression."
-authors = ["Yury Choi <yurytsoy@gmail.com>"]
-license = "MIT"
+version = "0.1.0"
+description = "Easy-to-use implementation of decision tree algorithm for regression and classification."
+authors = [
+    {name = "Yury Choi", email = "yurytsoy@gmail.com"}
+]
+license = {text = "MIT"}
 readme = "README.md"
-repository = "https://github.com/yurytsoy/easy-tree"
+requires-python = ">=3.11"
+dependencies = [
+    "polars (>=1.26.0,<2.0.0)",
+    "numpy (>=2.2.4,<3.0.0)",
+    "orjson (>=3.10.16,<4.0.0)"
+]
 
-[tool.poetry.dependencies]
-python = "^3.11"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
