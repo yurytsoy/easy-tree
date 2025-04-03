@@ -232,6 +232,10 @@ class NotExpression(BaseExpression):
 
 
 class ExpressionBuilder(BaseExpression):
+    """
+    Builder pattern for ... building logical expressions and conditions.
+    """
+
     def __init__(self, start: BaseExpression | None = None):
         self.current = start
 
