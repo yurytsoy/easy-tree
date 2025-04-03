@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from eazy_tree.usecases import find_split_cat, find_split_num
+from easy_tree.usecases import find_split_cat, find_split_num
 
 
 class TestUsecases(unittest.TestCase):

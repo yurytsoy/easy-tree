@@ -2,8 +2,8 @@ import unittest
 
 import polars as pl
 
-import eazy_tree as et
-from eazy_tree.logic import AtomicExpression, Operator, ExpressionBuilder
+import easy_tree as et
+from easy_tree.logic import AtomicExpression, Operator, ExpressionBuilder
 
 
 class TestNode(unittest.TestCase):

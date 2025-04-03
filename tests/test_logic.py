@@ -1,7 +1,7 @@
 import polars as pl
 import unittest
 
-from eazy_tree.logic import Operator, AtomicExpression, AndExpression, OrExpression, NotExpression, ExpressionBuilder
+from easy_tree.logic import Operator, AtomicExpression, AndExpression, OrExpression, NotExpression, ExpressionBuilder
 
 
 class TestAtomicExpression(unittest.TestCase):

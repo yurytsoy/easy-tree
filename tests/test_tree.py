@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-import eazy_tree as et
+import easy_tree as et
 
 
 class TestRegressionTree(unittest.TestCase):
