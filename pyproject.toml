@@ -1,6 +1,6 @@
 [project]
 name = "the_easy_tree"
-version = "0.1.1"
+version = "0.1.1a"
 description = "Decision tree algorithm implementation for regression and classification with minimal boilerplate code."
 authors = [
     {name = "Yury Choi", email = "yurytsoy@gmail.com"}
@@ -13,6 +13,7 @@ dependencies = [
     "numpy (>=2.2.4,<3.0.0)",
     "orjson (>=3.10.16,<4.0.0)"
 ]
+dynamic = [ "classifiers" ]
 
 [project.urls]
 repository = "https://github.com/yurytsoy/easy-tree"
@@ -20,6 +21,10 @@ repository = "https://github.com/yurytsoy/easy-tree"
 [tool.poetry]
 packages = [
     { include = "easy_tree" }
+]
+classifiers = [
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development"
 ]
 
 [build-system]
