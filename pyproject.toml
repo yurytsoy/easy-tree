@@ -1,5 +1,5 @@
 [project]
-name = "easy-tree"
+name = "easy-decision-tree"
 version = "0.1.0"
 description = "Decision tree algorithm implementation for regression and classification with minimal boilerplate code."
 authors = [
