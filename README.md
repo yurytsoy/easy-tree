@@ -1,5 +1,3 @@
-from easy_tree import DecisionTree
-
 # easy-tree
 
 Decision tree algorithm implementation for regression and classification with minimal boilerplate code. 

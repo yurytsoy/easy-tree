@@ -1,6 +1,6 @@
 [project]
 name = "the_easy_tree"
-version = "0.1.1a"
+version = "0.1.0"
 description = "Decision tree algorithm implementation for regression and classification with minimal boilerplate code."
 authors = [
     {name = "Yury Choi", email = "yurytsoy@gmail.com"}
