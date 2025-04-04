@@ -14,6 +14,9 @@ dependencies = [
     "orjson (>=3.10.16,<4.0.0)"
 ]
 
+[project.urls]
+repository = "https://github.com/yurytsoy/easy-tree"
+
 [tool.poetry]
 packages = [
     { include = "easy_tree" }
