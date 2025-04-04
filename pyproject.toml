@@ -1,5 +1,5 @@
 [project]
-name = "easy-decision-tree"
+name = "the_easy_tree"
 version = "0.1.0"
 description = "Decision tree algorithm implementation for regression and classification with minimal boilerplate code."
 authors = [
@@ -14,6 +14,10 @@ dependencies = [
     "orjson (>=3.10.16,<4.0.0)"
 ]
 
+[tool.poetry]
+packages = [
+    { include = "easy_tree" }
+]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
