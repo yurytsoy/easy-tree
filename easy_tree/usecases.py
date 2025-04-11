@@ -29,7 +29,7 @@ def get_random_filename(dir: str, suffix: str) -> str:
     return os.path.join(dir, f"{filename}{suffix}")
 
 
-def sample(data: pl.LazyFrame, add_index: bool = True) -> pl.LazyFrame:
+def sample(data: pl.LazyFrame, add_index: bool = True, seed: int = 42) -> pl.LazyFrame:
     """
     Resamples the provided LazyFrame and returns a lazy frame that has the same dimensions as the input one.
 
@@ -55,12 +55,13 @@ def sample(data: pl.LazyFrame, add_index: bool = True) -> pl.LazyFrame:
         data = data.with_columns(pl.arange(num_rows).alias(idx_colname))
 
     if num_rows < 1000_000:
-        return data.collect().sample(n=num_rows, with_replacement=True).lazy()
+        return data.collect().sample(n=num_rows, with_replacement=True, seed=seed).lazy()
 
     else:
         def sample_batch(batch: pl.DataFrame) -> pl.DataFrame:
-            return batch.sample(n=len(batch), with_replacement=True)
+            return batch.sample(n=len(batch), with_replacement=True, seed=int(rng.integers(65536)))
 
+        rng = np.random.default_rng(seed)
         tmp_file = get_random_filename(dir="/tmp", suffix=".pq")
         data.map_batches(sample_batch).sink_parquet(tmp_file)
         return read_data(tmp_file)
