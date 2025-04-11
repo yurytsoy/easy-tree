@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import numpy as np
+import os
 import polars as pl
+import string
 
 from .logic import Operator, AtomicExpression, ExpressionBuilder
 from .entities import SplitReport, BaseSplitScoring, VarianceScoring, EntropyScoring
@@ -20,6 +22,36 @@ def get_col(data: pl.LazyFrame | pl.DataFrame, colname: str) -> pl.Series:
         return data[colname]
     else:
         return data.select(colname).collect().to_series()
+
+
+def get_random_filename(dir: str, suffix: str) -> str:
+    filename = "".join(np.random.choice(list(string.ascii_uppercase + string.ascii_lowercase), 20))
+    return os.path.join(dir, f"{filename}{suffix}")
+
+
+def sample(data: pl.LazyFrame) -> pl.LazyFrame:
+    """
+    Resamples the provided LazyFrame and returns a lazy frame that has the same dimensions as the input one.
+
+    There is a discussion about `sample` implementation, however the result contains less number of samples:
+    * https://github.com/pola-rs/polars/issues/3933
+
+    Note:
+    * Due to the lazy nature of the `data` and potentially large data size,
+      the result is saved in the temporary file at the `/tmp` folder.
+    """
+    num_rows = data.select(pl.len()).collect().item()
+
+    if num_rows < 1000_000:
+        return data.collect().sample(n=num_rows, with_replacement=True).lazy()
+
+    else:
+        def sample_batch(batch: pl.DataFrame) -> pl.DataFrame:
+            return batch.sample(n=len(batch), with_replacement=True)
+
+        tmp_file = get_random_filename(dir="/tmp", suffix=".pq")
+        data.map_batches(sample_batch).sink_parquet(tmp_file)
+        return read_data(tmp_file)
 
 
 def get_scoring_method(data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, colname: str) -> BaseSplitScoring:
