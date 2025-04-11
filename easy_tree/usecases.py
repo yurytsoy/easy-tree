@@ -29,33 +29,37 @@ def get_random_filename(dir: str, suffix: str) -> str:
     return os.path.join(dir, f"{filename}{suffix}")
 
 
-def sample(data: pl.LazyFrame, add_index: bool = True, seed: int = 42) -> pl.LazyFrame:
+def sample(data: pl.LazyFrame | pl.DataFrame, add_index: bool = True, seed: int = 42) -> pl.LazyFrame | pl.DataFrame:
     """
-    Resamples the provided LazyFrame and returns a lazy frame that has the same dimensions as the input one.
+    Resamples the provided data frame and returns a resulting frame that has the same dimensions as the input one.
 
     There is a discussion about `sample` implementation, however the result contains less number of samples:
     * https://github.com/pola-rs/polars/issues/3933
 
     Note:
-    * Due to the lazy nature of the `data` and potentially large data size,
-      the result is saved in the temporary file at the `/tmp` folder.
+    * If lazy data is used or the data size is large the result is saved in the temporary file in the `/tmp` folder.
 
     Args
     ----
-    data: LazyFrame
+    data: LazyFrame | DataFrame
     add_index: bool, default=True
         Indicates whether column containing sample indices from the original data will be added.
         The column name is `__index__`
+    seed : int, default=42
+        Seed for reproducibility of sampling.
     """
 
     idx_colname = "__index__"
 
-    num_rows = data.select(pl.len()).collect().item()
+    num_rows = data.select(pl.len()).collect().item() if isinstance(data, pl.LazyFrame) else len(data)
     if add_index:
         data = data.with_columns(pl.arange(num_rows).alias(idx_colname))
 
-    if num_rows < 1000_000:
-        return data.collect().sample(n=num_rows, with_replacement=True, seed=seed).lazy()
+    if num_rows < 1000_000 or isinstance(data, pl.DataFrame):
+        if isinstance(data, pl.LazyFrame):
+            return data.collect().sample(n=num_rows, with_replacement=True, seed=seed).lazy()
+        else:
+            return data.sample(n=num_rows, with_replacement=True, seed=seed)
 
     else:
         def sample_batch(batch: pl.DataFrame) -> pl.DataFrame:
