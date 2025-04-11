@@ -62,7 +62,7 @@ class RandomForest(BaseModel):
 
     def _fit_tree(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series) -> FitTreeReport:
         cur_data = sample(data, add_index=True)
-        idxs = cur_data.select("__index__").collect().to_series()
+        idxs = get_col(cur_data, "__index__")
         cur_y_true = y_true[idxs]
         tree = DecisionTree(
             max_depth=self.max_depth, min_leaf_size=self.min_leaf_size
