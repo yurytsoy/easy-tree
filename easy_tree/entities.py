@@ -202,3 +202,13 @@ class EntropyScoring(BaseSplitScoring):
         self.split_conditions.append(condition)
         self.split_scores.append(reduction)
         self.split_points.append(split_point)
+
+
+class BaseModel:
+    feature_importances_: dict[str, float] | None = None
+
+    def fit(self, data: pl.LazyFrame | pl.DataFrame | str, y_true: pl.Series | str) -> BaseModel:
+        pass
+
+    def predict(self, data: pl.LazyFrame) -> pl.Series:
+        pass

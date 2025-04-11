@@ -5,11 +5,11 @@ import orjson
 import polars as pl
 
 from .logic import ExpressionBuilder
-from .entities import Node, TargetStats
+from .entities import Node, TargetStats, BaseModel
 from .usecases import find_split_cat, find_split_num, read_data, get_col
 
 
-class DecisionTree:
+class DecisionTree(BaseModel):
     """
     Implementation of the CART regression tree with few tweaks for robustness.
 
