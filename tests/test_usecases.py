@@ -111,3 +111,24 @@ class TestUsecases(unittest.TestCase):
             self.assertFalse("__index__" in res.columns)
             id_col = res.select("PassengerId").collect().to_series()
             self.assertLess(id_col.n_unique(), len(idx_col) * 2 / 3)  # according to the bootstrap probability (https://stats.stackexchange.com/questions/173520/random-forests-out-of-bag-sample-size).
+
+        with self.subTest("Reproducibility: check that result contain same id_col regardless of the index"):
+            for _ in range(10):
+                cur_res = sample(self.df)
+                cur_id_col = cur_res.select("PassengerId").collect().to_series()
+                self.assertTrue(all(cur_id_col == id_col))
+
+                cur_res = sample(self.df, add_index=False)
+                cur_id_col = cur_res.select("PassengerId").collect().to_series()
+                self.assertTrue(all(cur_id_col == id_col))
+
+        with self.subTest("Reproducibility: change seed"):
+            for k in range(10):
+                cur_res = sample(self.df, seed=k)
+                cur_id_col = cur_res.select("PassengerId").collect().to_series()
+                self.assertFalse(all(cur_id_col == id_col))  # different from reference, due to seed
+
+                cur_res_2 = sample(self.df, add_index=False, seed=k)
+                cur_id_col_2 = cur_res_2.select("PassengerId").collect().to_series()
+                self.assertFalse(all(cur_id_col_2 == id_col))  # different from reference, due to seed
+                self.assertTrue(all(cur_id_col == cur_id_col_2))  # identical due to seed
