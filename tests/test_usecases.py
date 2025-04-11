@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from easy_tree.usecases import find_split_cat, find_split_num
+from easy_tree.usecases import find_split_cat, find_split_num, sample
 
 
 class TestUsecases(unittest.TestCase):
@@ -100,3 +100,14 @@ class TestUsecases(unittest.TestCase):
         self.assertIsNone(res.best_split_eval)
         self.assertIsNone(res.best_split_condition)
 
+    def test_sample(self):
+        with self.subTest("With index"):
+            res = sample(self.df, add_index=True)
+            idx_col = res.select("__index__").collect().to_series()
+            self.assertLess(idx_col.n_unique(), len(idx_col) * 2 / 3)  # according to the bootstrap probability (https://stats.stackexchange.com/questions/173520/random-forests-out-of-bag-sample-size).
+
+        with self.subTest("Without index"):
+            res = sample(self.df, add_index=False)
+            self.assertFalse("__index__" in res.columns)
+            id_col = res.select("PassengerId").collect().to_series()
+            self.assertLess(id_col.n_unique(), len(idx_col) * 2 / 3)  # according to the bootstrap probability (https://stats.stackexchange.com/questions/173520/random-forests-out-of-bag-sample-size).

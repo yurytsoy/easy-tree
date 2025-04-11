@@ -29,7 +29,7 @@ def get_random_filename(dir: str, suffix: str) -> str:
     return os.path.join(dir, f"{filename}{suffix}")
 
 
-def sample(data: pl.LazyFrame) -> pl.LazyFrame:
+def sample(data: pl.LazyFrame, add_index: bool = True) -> pl.LazyFrame:
     """
     Resamples the provided LazyFrame and returns a lazy frame that has the same dimensions as the input one.
 
@@ -39,8 +39,20 @@ def sample(data: pl.LazyFrame) -> pl.LazyFrame:
     Note:
     * Due to the lazy nature of the `data` and potentially large data size,
       the result is saved in the temporary file at the `/tmp` folder.
+
+    Args
+    ----
+    data: LazyFrame
+    add_index: bool, default=True
+        Indicates whether column containing sample indices from the original data will be added.
+        The column name is `__index__`
     """
+
+    idx_colname = "__index__"
+
     num_rows = data.select(pl.len()).collect().item()
+    if add_index:
+        data = data.with_columns(pl.arange(num_rows).alias(idx_colname))
 
     if num_rows < 1000_000:
         return data.collect().sample(n=num_rows, with_replacement=True).lazy()
