@@ -97,27 +97,18 @@ def find_split_num(
         """
 
         def __init__(self, column: pl.Series):
-            self.stats = column.describe()
+            xs = column.to_numpy()
+            self.has_missing_values = np.isnan(xs).any()
+            if xs.any():
+                self.percentiles = sorted(set(np.percentile(xs, [25, 50, 75])))
+                self.std = np.nanstd(xs)
+            else:
+                self.percentiles = None
+                self.std = np.nan
 
         @property
         def is_dull(self) -> bool:
-            is_all_missing = len(self.stats) == 2
-            is_all_nan = not is_all_missing and np.isnan(self.std)
-            is_constant = not is_all_missing and self.std == 0
-            return is_all_missing or is_constant or is_all_nan
-
-        @property
-        def has_missing_values(self) -> bool:
-            null_count_idx = 1  # index at which the statistics contain information about missing values.
-            return self.stats["value"][null_count_idx] > 0
-
-        @property
-        def std(self) -> float:
-            return self.stats["value"][3]
-
-        def perc(self, perc_name: str) -> float:
-            idx = self.stats["statistic"].index_of(perc_name)
-            return self.stats["value"][idx]
+            return self.percentiles is None or np.isnan(self.std) or self.std == 0
 
     scoring = scoring or get_scoring_method(data=data, y_true=y_true, colname=colname)
 
@@ -129,8 +120,7 @@ def find_split_num(
     if col_stats.is_dull:
         return scoring.get_report()
 
-    for perc_name in ["25%", "50%", "75%"]:
-        split_pt = col_stats.perc(perc_name)
+    for split_pt in col_stats.percentiles:
         split_condition = ExpressionBuilder(
             AtomicExpression(colname=colname, operator=Operator.greater, rhs=split_pt)
         ).and_(AtomicExpression(colname=colname, operator=Operator.not_equal, rhs=None)).current
