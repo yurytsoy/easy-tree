@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import numpy as np
 import orjson
 import polars as pl
 
@@ -23,9 +24,10 @@ class DecisionTree(BaseModel):
         unless it has missing value explicitly on the RHS.
     """
 
-    def __init__(self, max_depth: int = 4, min_leaf_size: int = 10) -> None:
+    def __init__(self, max_depth: int = 4, min_leaf_size: int = 10, max_features: int | float | str | None = None) -> None:
         self.max_depth = max(max_depth, 2)  # ignore values < 2
         self.min_leaf_size = max(min_leaf_size, 1)  # ignore values < 1
+        self.max_features = max_features
         self.root_ = None
         self.feature_importances_ = None
         self.prediction_type_ = None
@@ -56,6 +58,24 @@ class DecisionTree(BaseModel):
         right = self.get_nodes(start.right) if start.right else []
         return [start] + left + right
 
+    def validate_settings(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series):
+        # min_leaf_size.
+        if self.min_leaf_size >= len(y_true):
+            raise RuntimeError("min_leaf_size must be smaller than data size")
+
+        # max_features.
+        if isinstance(self.max_features, int):
+            if self.max_features > len(data.columns) or self.max_features < 1:
+                raise RuntimeError("Integer `max_features` should be in the range [1, number_of_columns]")
+
+        if isinstance(self.max_features, float):
+            if self.max_features > 1.0 or self.max_features <= 0.0:
+                raise RuntimeError("Fractional `max_features` should be in the range (0, 1.0].")
+
+        if isinstance(self.max_features, str):
+            if self.max_features not in ["sqrt", "log2"]:
+                raise RuntimeError("String `max_features` should be one of: ['sqrt, 'log2']")
+
     def fit(self, data: pl.LazyFrame | pl.DataFrame | str, y_true: pl.Series | str) -> DecisionTree:
         """
         Args
@@ -72,9 +92,7 @@ class DecisionTree(BaseModel):
         if y_true.name in data.columns:
             data = data.drop(y_true.name)
 
-        # validate settings.
-        if self.min_leaf_size >= len(y_true):
-            raise RuntimeError("min_leaf_size must be smaller than data size")
+        self.validate_settings(data=data, y_true=y_true)
 
         # training.
         self.prediction_type_ = pl.Float64 if y_true.dtype.is_numeric() else pl.String
@@ -131,6 +149,19 @@ class DecisionTree(BaseModel):
             else:
                 node.target_stats.distr = {cat: count for cat, count in y_true.value_counts().rows()}
 
+        def get_max_features() -> int:
+            if self.max_features is None:
+                return len(data.columns)
+            if isinstance(self.max_features, int):
+                return self.max_features
+            if isinstance(self.max_features, float):
+                return max(1, int(self.max_features * len(data.columns)))
+            if self.max_features == "sqrt":
+                return round(np.sqrt(len(data.columns)).item())
+            if self.max_features == "log2":
+                return round(np.log2(len(data.columns)).item())
+            raise NotImplementedError(f"Unsupported max_features value ({self.max_features})")
+
         init_node_stats()
 
         if node.depth > self.max_depth:
@@ -140,10 +171,12 @@ class DecisionTree(BaseModel):
             return None  # insufficient data.
 
         data = maybe_get_in_memory_df()
+        max_features = get_max_features()
 
         # find the best split
         best_split = None
-        for colname in data.columns:
+        columns = np.random.choice(data.columns, max_features, replace=False)
+        for colname in columns:
             if data.schema[colname].is_numeric():
                 cur_split = find_split_num(data=data, colname=colname, y_true=y_true)
             else:

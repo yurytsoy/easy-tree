@@ -31,6 +31,21 @@ class TestRegressionTree(unittest.TestCase):
         self.assertEqual(np.nanmax(mask), 1)  # ... exactly one time
         self.assertFalse(np.isnan(mask).any())  # nans are taken care of
 
+    def compute_accuracy(
+        self,
+        tree: et.DecisionTree,
+        train_data: pl.DataFrame | pl.LazyFrame,
+        train_y_true: pl.Series,
+        val_data: pl.DataFrame | pl.LazyFrame,
+        val_y_true: pl.Series,
+    ) -> tuple[float, float]:
+        thr = train_y_true.mean()
+        pred_train = (tree.predict(train_data) > thr).cast(float)
+        accuracy_train = (pred_train == train_y_true).mean()
+        pred_val = (tree.predict(val_data) > thr).cast(float)
+        accuracy_val = (pred_val == val_y_true).mean()
+        return accuracy_train, accuracy_val
+
     def test_fit(self):
         rng = np.random.default_rng(42)
         train_flag = pl.Series(values=rng.choice([True, False], size=len(self.y_true), p=[0.8, 0.2]))
@@ -52,11 +67,11 @@ class TestRegressionTree(unittest.TestCase):
 
         with self.subTest("evaluate"):
             # compute accuracy
-            thr = self.y_true.mean()
-            pred_train = (tree.predict(train_df) > thr).cast(float)
-            accuracy_train = (pred_train == train_y_true).mean()
-            pred_val = (tree.predict(val_df) > thr).cast(float)
-            accuracy_val = (pred_val == val_y_true).mean()
+            accuracy_train, accuracy_val = self.compute_accuracy(
+                tree=tree,
+                train_data=train_df, train_y_true=train_y_true,
+                val_data=val_df, val_y_true=val_y_true,
+            )
             print(f"{accuracy_train:.4f} / {accuracy_val:.4f}")
 
             self.assertGreater(accuracy_train, 0.801)
@@ -140,6 +155,7 @@ class TestRegressionTree(unittest.TestCase):
         tree = et.DecisionTree(max_depth=6)
 
         with self.subTest("fit"):
+            np.random.seed(42)
             tree.fit(
                 data="tests/data/titanic_train.csv", y_true="Survived",
             )
@@ -149,9 +165,9 @@ class TestRegressionTree(unittest.TestCase):
             expected = {
                 'Sex': 0.6386196656393685,
                 'Pclass': 0.1862340939572088,
-                'Fare': 0.0776634310699213,
+                'Fare': 0.07874069758687925,
                 'Embarked': 0.03429517642519025,
-                'PassengerId': 0.03219628233439697,
+                'PassengerId': 0.031119015817439033,
                 'SibSp': 0.019477487622142957,
                 'Parch': 0.01151386295177126,
             }
@@ -162,6 +178,43 @@ class TestRegressionTree(unittest.TestCase):
             pred_train = (tree.predict(self.df) > pred_thr).cast(float)
             accuracy_train = (pred_train == self.y_true).mean()
             self.assertGreater(accuracy_train, 0.8069)
+
+    def test_fit_max_features(self):
+        rng = np.random.default_rng(42)
+        train_flag = pl.Series(values=rng.choice([True, False], size=len(self.y_true), p=[0.8, 0.2]))
+        train_df = self.df.filter(train_flag)
+        train_y_true = self.y_true.filter(train_flag)
+        val_df = self.df.filter(~train_flag)
+        val_y_true = self.y_true.filter(~train_flag)
+
+        ress = dict()
+        for cur_value in [None, 5, 0.6, "sqrt", "log2"]:
+            np.random.seed(42)
+            tree = et.DecisionTree(max_features=cur_value).fit(train_df, train_y_true)
+            train_acc, val_acc = self.compute_accuracy(
+                tree=tree,
+                train_data=train_df, train_y_true=train_y_true,
+                val_data=val_df, val_y_true=val_y_true,
+            )
+            ress[cur_value] = train_acc, val_acc
+            self.assertGreater(val_acc, 0.70)
+        print(ress)
+
+    def test_fit_max_features_wrong_settings(self):
+        with self.subTest("Bad integer"):
+            for cur_value in [20, 0, -1]:
+                with self.assertRaises(RuntimeError):
+                    et.DecisionTree(max_features=cur_value).fit(self.df, self.y_true)
+
+        with self.subTest("Bad float"):
+            for cur_value in [1.01, 0.0, -0.1]:
+                with self.assertRaises(RuntimeError):
+                    et.DecisionTree(max_features=cur_value).fit(self.df, self.y_true)
+
+        with self.subTest("Bad string"):
+            for cur_value in ["foo", "Sqrt", "log"]:
+                with self.assertRaises(RuntimeError):
+                    et.DecisionTree(max_features=cur_value).fit(self.df, self.y_true)
 
     def test_save_load(self):
         tree = et.DecisionTree()
