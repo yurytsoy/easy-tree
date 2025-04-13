@@ -155,7 +155,6 @@ class TestRegressionTree(unittest.TestCase):
                 'SibSp': 0.019477487622142957,
                 'Parch': 0.01151386295177126,
             }
-            print(tree.feature_importances_)
             self.assertImportanceEqual(tree, expected)
 
         with self.subTest("Accuracy"):
