@@ -177,9 +177,9 @@ def find_split_cat(
             continue
 
         # evaluate split point
-        scoring.add_split_condition(
-            AtomicExpression(colname=colname, operator=Operator.equal, rhs=category),
-            split_point=category,
-        )
+        split_condition = ExpressionBuilder(
+            AtomicExpression(colname=colname, operator=Operator.equal, rhs=category)
+        ).and_(AtomicExpression(colname=colname, operator=Operator.not_equal, rhs=None)).current
+        scoring.add_split_condition(condition=split_condition, split_point=category)
 
     return scoring.get_report()
