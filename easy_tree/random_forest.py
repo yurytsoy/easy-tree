@@ -21,10 +21,11 @@ class RandomForest(BaseModel):
     n_estimators: int
     trees_: list[DecisionTree] | None
 
-    def __init__(self, n_estimators: int = 100, max_depth: int = 5, min_leaf_size: int = 10, n_jobs: int | None = None):
+    def __init__(self, n_estimators: int = 100, max_depth: int = 5, min_leaf_size: int = 10, max_features: int | float | str | None = 1.0, n_jobs: int | None = None):
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.min_leaf_size = min_leaf_size
+        self.max_features = max_features
         self.n_jobs = n_jobs
         self.trees_ = []
         self.feature_importances_ = None
@@ -64,8 +65,9 @@ class RandomForest(BaseModel):
         cur_data = sample(data, add_index=True)
         idxs = get_col(cur_data, "__index__")
         cur_y_true = y_true[idxs]
+
         tree = DecisionTree(
-            max_depth=self.max_depth, min_leaf_size=self.min_leaf_size
+            max_depth=self.max_depth, min_leaf_size=self.min_leaf_size, max_features=self.max_features
         ).fit(cur_data.drop("__index__"), cur_y_true)
         return FitTreeReport(tree, oob_idxs=sorted(set(range(len(y_true))) - set(idxs)))
 
