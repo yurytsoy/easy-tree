@@ -175,7 +175,9 @@ class DecisionTree(BaseModel):
 
         # find the best split
         best_split = None
-        columns = np.random.choice(data.columns, max_features, replace=False)
+        columns = np.random.choice(data.columns, max_features, replace=False)\
+            if max_features < len(data.columns)\
+            else data.columns
         for colname in columns:
             if data.schema[colname].is_numeric():
                 cur_split = find_split_num(data=data, colname=colname, y_true=y_true)
