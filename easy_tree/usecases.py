@@ -162,14 +162,18 @@ def find_split_cat(
     if len(val_counts) == 1:    # either all missing or constant
         return scoring.get_report()
 
-    for category, count in val_counts.rows():
+    has_missing_values = col.is_null().sum() > 0
+    for category, count in val_counts.rows():  # None is included!
         if count < min_count:
             continue
 
         # evaluate split point
-        split_condition = ExpressionBuilder(
-            AtomicExpression(colname=colname, operator=Operator.equal, rhs=category)
-        ).and_(AtomicExpression(colname=colname, operator=Operator.not_equal, rhs=None)).current
+        if has_missing_values and category is not None:
+            split_condition = ExpressionBuilder(
+                AtomicExpression(colname=colname, operator=Operator.equal, rhs=category)
+            ).and_(AtomicExpression(colname=colname, operator=Operator.not_equal, rhs=None)).current
+        else:
+            split_condition = AtomicExpression(colname=colname, operator=Operator.equal, rhs=category)
         scoring.add_split_condition(condition=split_condition, split_point=category)
 
     return scoring.get_report()
