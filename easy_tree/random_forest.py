@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import dataclasses
 from collections import defaultdict
 
@@ -30,6 +31,7 @@ class RandomForest(BaseModel):
         self.trees_ = []
         self.feature_importances_ = None
         self.oob_counts_ = None
+        self._seeds = []  # array of RNG seeds to reproducibility of sampling
 
     def fit(self, data: pl.LazyFrame | pl.DataFrame | str, y_true: pl.Series | str) -> BaseModel:
         # prepare data and target
@@ -44,10 +46,16 @@ class RandomForest(BaseModel):
 
         # train trees
         self.oob_counts_ = np.zeros(len(y_true))
-        for _ in range(self.n_estimators):
-            res = self._fit_tree(data, y_true)
-            self.trees_.append(res.tree)
-            self.oob_counts_[res.oob_idxs] += 1
+        self._seeds = np.random.randint(10000, size=self.n_estimators)
+        with ThreadPoolExecutor(max_workers=self.n_jobs) as executor:
+            future_to_trees = [executor.submit(self._fit_tree, data, y_true, k) for k in range(self.n_estimators)]
+            for future in as_completed(future_to_trees):
+                try:
+                    res = future.result()
+                    self.trees_.append(res.tree)
+                    self.oob_counts_[res.oob_idxs] += 1
+                except Exception as e:
+                    print(e)
 
         # compute feature importance as average importance
         self.feature_importances_ = defaultdict(lambda: 0)
@@ -61,8 +69,9 @@ class RandomForest(BaseModel):
 
         return self
 
-    def _fit_tree(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series) -> FitTreeReport:
-        cur_data = sample(data, add_index=True)
+    def _fit_tree(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, tree_idx: int=None) -> FitTreeReport:
+        seed = self._seeds[tree_idx] if tree_idx is not None else None
+        cur_data = sample(data, add_index=True, seed=seed)
         idxs = get_col(cur_data, "__index__")
         cur_y_true = y_true[idxs]
 
