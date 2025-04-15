@@ -100,15 +100,16 @@ def find_split_num(
             xs = column.to_numpy()
             self.has_missing_values = np.isnan(xs).any()
             if xs.any():
-                self.percentiles = sorted(set(np.percentile(xs, [25, 50, 75])))
-                self.std = np.nanstd(xs)
+                percentiles = np.percentile(xs, [0, 25, 50, 75, 100])
+                self.percentiles = sorted(set(percentiles[1:4]))
+                self.empty_std = percentiles[0] == percentiles[4]
             else:
                 self.percentiles = None
-                self.std = np.nan
+                self.empty_std = True
 
         @property
         def is_dull(self) -> bool:
-            return self.percentiles is None or np.isnan(self.std) or self.std == 0
+            return self.percentiles is None or self.empty_std
 
     scoring = scoring or get_scoring_method(data=data, y_true=y_true, colname=colname)
 
