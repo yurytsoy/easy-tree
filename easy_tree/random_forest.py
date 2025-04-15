@@ -47,15 +47,19 @@ class RandomForest(BaseModel):
         # train trees
         self.oob_counts_ = np.zeros(len(y_true))
         self._seeds = np.random.randint(10000, size=self.n_estimators)
-        with ThreadPoolExecutor(max_workers=self.n_jobs) as executor:
-            future_to_trees = [executor.submit(self._fit_tree, data, y_true, k) for k in range(self.n_estimators)]
-            for future in as_completed(future_to_trees):
-                try:
-                    res = future.result()
-                    self.trees_.append(res.tree)
-                    self.oob_counts_[res.oob_idxs] += 1
-                except Exception as e:
-                    print(e)
+        for k in range(self.n_estimators):
+            res = self._fit_tree(data, y_true, k)
+            self.trees_.append(res.tree)
+            self.oob_counts_[res.oob_idxs] += 1
+        # with ThreadPoolExecutor(max_workers=4) as executor:
+        #     future_to_trees = [executor.submit(self._fit_tree, data, y_true, k) for k in range(self.n_estimators)]
+        #     for future in as_completed(future_to_trees):
+        #         try:
+        #             res = future.result()
+        #             self.trees_.append(res.tree)
+        #             self.oob_counts_[res.oob_idxs] += 1
+        #         except Exception as e:
+        #             print(e)
 
         # compute feature importance as average importance
         self.feature_importances_ = defaultdict(lambda: 0)
