@@ -1,3 +1,4 @@
+import numpy as np
 import polars as pl
 import unittest
 
@@ -9,6 +10,12 @@ class TestAtomicExpression(unittest.TestCase):
         df = pl.scan_csv("tests/data/titanic_train.csv")
         expr = AtomicExpression(colname="Age", operator=Operator.greater, rhs=30)
         res = expr.apply(df)
+        self.assertTrue((df.filter(res).select("Age").collect().to_series() > 30).all())
+
+    def test_apply_numpy(self):
+        df = pl.scan_csv("tests/data/titanic_train.csv")
+        expr = AtomicExpression(colname="Age", operator=Operator.greater, rhs=30)
+        res = expr.apply_numpy(df.select("Age").collect().to_series().to_numpy())
         self.assertTrue((df.filter(res).select("Age").collect().to_series() > 30).all())
 
     def test_not_(self):
@@ -48,6 +55,26 @@ class TestAndExpression(unittest.TestCase):
         self.assertTrue((res_df.select("Age").to_series() > 30).all())
         self.assertTrue((res_df.select("Pclass").to_series() == 2).all())
 
+    def test_apply_numpy(self):
+        df = pl.scan_csv("tests/data/titanic_train.csv")
+        left = AtomicExpression(colname="Age", operator=Operator.greater, rhs=20)
+        right = AtomicExpression(colname="Age", operator=Operator.less_or_equal, rhs=60)
+        expr = AndExpression(left, right)
+        age_vals = df.select("Age").collect().to_series().to_numpy()
+        res = expr.apply_numpy(age_vals)
+        res_age_vals = age_vals[res]
+        self.assertTrue(((20 < res_age_vals) & (res_age_vals <= 60)).all())
+
+    def test_apply_numpy_cat(self):
+        df = pl.scan_csv("tests/data/titanic_train.csv")
+        left = AtomicExpression(colname="Embarked", operator=Operator.equal, rhs="Q")
+        right = AtomicExpression(colname="Embarked", operator=Operator.not_equal, rhs=None)
+        expr = AndExpression(left, right)
+        embarked_vals = df.select("Embarked").collect().to_series().to_numpy()
+        res = expr.apply_numpy(embarked_vals)
+        res_embarked_vals = embarked_vals[res]
+        self.assertTrue(((res_embarked_vals == "Q") & (res_embarked_vals is not None)).all())
+
     def test_apply_nested(self):
         df = pl.scan_csv("tests/data/titanic_train.csv")
         left = AtomicExpression(colname="Age", operator=Operator.greater, rhs=30)
@@ -74,6 +101,26 @@ class TestOrExpression(unittest.TestCase):
         res_series = (res_df.select("Age").to_series() > 30) | (res_df.select("Pclass").to_series() == 2)
         self.assertTrue(res_series.all())
 
+    def test_apply_numpy(self):
+        df = pl.scan_csv("tests/data/titanic_train.csv")
+        left = AtomicExpression(colname="Age", operator=Operator.less, rhs=20)
+        right = AtomicExpression(colname="Age", operator=Operator.greater_or_equal, rhs=60)
+        expr = AndExpression(left, right)
+        age_vals = df.select("Age").collect().to_series().to_numpy()
+        res = expr.apply_numpy(age_vals)
+        res_age_vals = age_vals[res]
+        self.assertTrue(((20 > res_age_vals) & (res_age_vals >= 60)).all())
+
+    def test_apply_numpy_cat(self):
+        df = pl.scan_csv("tests/data/titanic_train.csv")
+        left = AtomicExpression(colname="Embarked", operator=Operator.equal, rhs="Q")
+        right = AtomicExpression(colname="Embarked", operator=Operator.equal, rhs="C")
+        expr = AndExpression(left, right)
+        embarked_vals = df.select("Embarked").collect().to_series().to_numpy()
+        res = expr.apply_numpy(embarked_vals)
+        res_embarked_vals = embarked_vals[res]
+        self.assertTrue(((res_embarked_vals == "Q") | (res_embarked_vals == "C")).all())
+
 
 class TestNotExpression(unittest.TestCase):
     def test_apply(self):
@@ -83,6 +130,15 @@ class TestNotExpression(unittest.TestCase):
         res = expr.apply(df)
         res_series = df.filter(res).collect().select("Age").to_series()
         self.assertEqual(res_series.is_null().sum() + res_series.is_nan().sum(), 0)
+
+    def test_apply_numpy(self):
+        df = pl.scan_csv("tests/data/titanic_train.csv")
+        item = AtomicExpression(colname="Age", operator=Operator.equal, rhs=None)
+        expr = NotExpression(item)
+        age_vals = df.select("Age").collect().to_series().to_numpy()
+        res = expr.apply_numpy(age_vals)
+        res_age_vals = age_vals[res]
+        self.assertEqual(np.isnan(res_age_vals).sum(), 0)
 
     def test_not_(self):
         item = AtomicExpression(colname="Age", operator=Operator.equal, rhs=None)
