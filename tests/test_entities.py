@@ -44,6 +44,46 @@ class TestNode(unittest.TestCase):
             self.assertTrue((res_left | res_right).all())
             self.assertFalse((res_left & res_right).any())
 
+    def test_full_condition_apply_numpy_depth_1_2(self):
+        import numpy as np
+
+        data = pl.LazyFrame({
+            "foo": [None] * 10 + list(range(100)),
+            "bar": list(range(100)) + [None] * 10
+        })
+        foo_vals = data.select("foo").collect().to_series().to_numpy()
+        foo_cond = ExpressionBuilder(
+            AtomicExpression(colname="foo", operator=Operator.greater, rhs=10)
+        ).and_(AtomicExpression(colname="foo", operator=Operator.not_equal, rhs=None)).current
+
+        with self.subTest("no parent, no child nodes"):
+            node = et.Node(depth=1)
+            node.condition = foo_cond
+            self.assertEqual(str(node.full_condition), "(foo > 10) AND (foo != None)")
+            res = node.full_condition.apply_numpy(foo_vals)
+            self.assertEqual(np.isnan(res).sum(), 0)
+            self.assertEqual(res.sum(), 89)
+
+        with self.subTest("with parent, right child, no cond"):
+            node1 = et.Node(depth=1)
+            node1.condition = foo_cond
+            node2 = et.Node(depth=2, parent=node1)
+            node1.right = node2
+            self.assertEqual(str(node2.full_condition), "(foo > 10) AND (foo != None)")
+            res_right = node2.full_condition.apply_numpy(foo_vals)
+
+        with self.subTest("with parent, left child, no cond"):
+            node1 = et.Node(depth=1)
+            node1.condition = foo_cond
+            node2 = et.Node(depth=2, parent=node1)
+            node1.left = node2
+            self.assertEqual(str(node2.full_condition), "NOT ((foo > 10) AND (foo != None))")
+            res_left = node2.full_condition.apply_numpy(foo_vals)
+
+            # check that res_right and res_left cover all cases and do not overlap
+            self.assertTrue((res_left | res_right).all())
+            self.assertFalse((res_left & res_right).any())
+
     def test_full_condition_depth_3(self):
         data = pl.LazyFrame({
             "foo": [None] * 10 + list(range(100)),
