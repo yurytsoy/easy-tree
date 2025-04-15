@@ -309,6 +309,12 @@ class ExpressionBuilder(BaseExpression):
 
         return self.current.apply(data)
 
+    def apply_numpy(self, xs: np.ndarray) -> np.ndarray:
+        if self.current is None:
+            raise RuntimeError()
+
+        return self.current.apply_numpy(xs)
+
     def __repr__(self) -> str:
         if self.current is None:
             return ""

@@ -126,7 +126,10 @@ class BaseSplitScoring:
         self.data = data
         self.y_true = y_true
         self.column = column
-        self.column_values = self.data.select(column).collect().to_series().to_numpy()  # pre-fetch for speed
+        if isinstance(self.data, pl.DataFrame):  # pre-fetch column values for speed
+            self.column_values = self.data.select(column).to_series().to_numpy()
+        else:
+            self.column_values = self.data.select(column).collect().to_series().to_numpy()
         self.split_conditions = []
         self.split_scores = []
         self.split_points = []
