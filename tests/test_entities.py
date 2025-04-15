@@ -1,8 +1,10 @@
 import unittest
 
+import numpy as np
 import polars as pl
 
 import easy_tree as et
+from easy_tree.entities import VarianceScoring, EntropyScoring
 from easy_tree.logic import AtomicExpression, Operator, ExpressionBuilder
 
 
@@ -45,8 +47,6 @@ class TestNode(unittest.TestCase):
             self.assertFalse((res_left & res_right).any())
 
     def test_full_condition_apply_numpy_depth_1_2(self):
-        import numpy as np
-
         data = pl.LazyFrame({
             "foo": [None] * 10 + list(range(100)),
             "bar": list(range(100)) + [None] * 10
@@ -128,3 +128,63 @@ class TestNode(unittest.TestCase):
             self.assertEqual(res_r_2.sum() + res_l_2.sum(), data_2.collect().shape[0])
             self.assertFalse((res_l_2 & res_r_2).any())  # mutually exclusive ...
             self.assertTrue((res_l_2 ^ res_r_2).all())  # ... and populate all available positions.
+
+
+class TestVarianceScoring(unittest.TestCase):
+    def test_variance_scoring(self):
+        data = pl.LazyFrame({
+            "foo": [None] * 10 + list(range(100)),
+            "bar": list(range(100)) + [None] * 10
+        })
+        y_true = pl.Series(values=np.random.choice([0, 1], size=110))
+        scoring = VarianceScoring(data, y_true=y_true, column="foo")
+        scoring.add_split_condition(
+            ExpressionBuilder(
+                AtomicExpression(colname="foo", operator=Operator.greater, rhs=10)
+            ).and_(
+                AtomicExpression(colname="foo", operator=Operator.not_equal, rhs=np.nan)
+            ),
+            split_point=10
+        )
+
+        scoring.add_split_condition(
+            ExpressionBuilder(
+                AtomicExpression(colname="foo", operator=Operator.less_or_equal, rhs=30)
+            ).and_(
+                AtomicExpression(colname="foo", operator=Operator.not_equal, rhs=np.nan)
+            ),
+            split_point=30
+        )
+        report = scoring.get_report()
+        self.assertIsNotNone(report.best_idx)
+        self.assertIsNotNone(report.best_split_condition)
+
+
+class TestEntropyScoring(unittest.TestCase):
+    def test_entropy_scoring(self):
+        data = pl.LazyFrame({
+            "foo": [None] * 10 + list(range(100)),
+            "bar": list(range(100)) + [None] * 10
+        })
+        y_true = pl.Series(values=np.random.choice(["0", "1"], size=110))
+        scoring = EntropyScoring(data, y_true=y_true, column="foo")
+        scoring.add_split_condition(
+            ExpressionBuilder(
+                AtomicExpression(colname="foo", operator=Operator.greater, rhs=10)
+            ).and_(
+                AtomicExpression(colname="foo", operator=Operator.not_equal, rhs=np.nan)
+            ),
+            split_point=10
+        )
+
+        scoring.add_split_condition(
+            ExpressionBuilder(
+                AtomicExpression(colname="foo", operator=Operator.less_or_equal, rhs=30)
+            ).and_(
+                AtomicExpression(colname="foo", operator=Operator.not_equal, rhs=np.nan)
+            ),
+            split_point=30
+        )
+        report = scoring.get_report()
+        self.assertIsNotNone(report.best_idx)
+        self.assertIsNotNone(report.best_split_condition)

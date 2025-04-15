@@ -126,6 +126,7 @@ class BaseSplitScoring:
         self.data = data
         self.y_true = y_true
         self.column = column
+        self.column_values = self.data.select(column).collect().to_series().to_numpy()  # pre-fetch for speed
         self.split_conditions = []
         self.split_scores = []
         self.split_points = []
@@ -152,7 +153,7 @@ class VarianceScoring(BaseSplitScoring):
         self.variance = self.y_true.var()
 
     def add_split_condition(self, condition: BaseExpression, split_point: int | float | str | None):
-        true_mask = condition.apply(self.data)
+        true_mask = condition.apply_numpy(self.column_values)
         if true_mask.all() or true_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
         false_mask = ~true_mask
@@ -186,7 +187,7 @@ class EntropyScoring(BaseSplitScoring):
         """
         Add condition for splitting and compute split score.
         """
-        true_mask = condition.apply(self.data)
+        true_mask = condition.apply_numpy(self.column_values)
         if true_mask.all() or true_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
         false_mask = ~true_mask
