@@ -84,6 +84,19 @@ class DecisionTree(BaseModel):
         y_true : pl.Series
         """
 
+        def get_max_features() -> int:
+            if self.max_features is None:
+                return len(data.columns)
+            if isinstance(self.max_features, int):
+                return self.max_features
+            if isinstance(self.max_features, float):
+                return max(1, int(self.max_features * len(data.columns)))
+            if self.max_features == "sqrt":
+                return round(np.sqrt(len(data.columns)).item())
+            if self.max_features == "log2":
+                return round(np.log2(len(data.columns)).item())
+            raise NotImplementedError(f"Unsupported max_features value ({self.max_features})")
+
         # prepare data and target
         if isinstance(data, str) and isinstance(y_true, str):
             data = read_data(data)
@@ -96,7 +109,7 @@ class DecisionTree(BaseModel):
 
         # training.
         self.prediction_type_ = pl.Float64 if y_true.dtype.is_numeric() else pl.String
-        self.root_ = self._make_node(node=Node(depth=1), data=data, y_true=y_true)
+        self.root_ = self._make_node(node=Node(depth=1), data=data, y_true=y_true, max_features=get_max_features())
 
         # postprocessing: compute `feature_importances_`
         self._compute_feature_importance()
@@ -117,7 +130,7 @@ class DecisionTree(BaseModel):
             in sorted(self.feature_importances_.items(), key=lambda item: item[1], reverse=True)
         }
 
-    def _make_node(self, node: Node, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series) -> Node | None:
+    def _make_node(self, node: Node, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, max_features: int) -> Node | None:
         """
         Finalizes tree node, provided on input.
 
@@ -149,19 +162,6 @@ class DecisionTree(BaseModel):
             else:
                 node.target_stats.distr = {cat: count for cat, count in y_true.value_counts().rows()}
 
-        def get_max_features() -> int:
-            if self.max_features is None:
-                return len(data.columns)
-            if isinstance(self.max_features, int):
-                return self.max_features
-            if isinstance(self.max_features, float):
-                return max(1, int(self.max_features * len(data.columns)))
-            if self.max_features == "sqrt":
-                return round(np.sqrt(len(data.columns)).item())
-            if self.max_features == "log2":
-                return round(np.log2(len(data.columns)).item())
-            raise NotImplementedError(f"Unsupported max_features value ({self.max_features})")
-
         init_node_stats()
 
         if node.depth > self.max_depth:
@@ -171,19 +171,20 @@ class DecisionTree(BaseModel):
             return None  # insufficient data.
 
         data = maybe_get_in_memory_df()
-        max_features = get_max_features()
 
         # find the best split
         best_split = None
         columns = np.random.choice(data.columns, max_features, replace=False)\
             if max_features < len(data.columns)\
             else data.columns
+        columns_to_drop = []
         for colname in columns:
             if data.schema[colname].is_numeric():
                 cur_split = find_split_num(data=data, colname=colname, y_true=y_true)
             else:
                 cur_split = find_split_cat(data=data, colname=colname, y_true=y_true)
             if cur_split.best_idx is None:
+                columns_to_drop.append(colname)
                 continue
 
             if best_split is None or best_split.best_split_eval < cur_split.best_split_eval:
@@ -191,6 +192,9 @@ class DecisionTree(BaseModel):
 
         if best_split is None or best_split.best_split_eval <= 0:
             return node
+
+        if columns_to_drop:
+            data = data.drop(columns_to_drop)
 
         # note: split score is written to the *parent* node!
         node.target_stats.score_reduction = best_split.best_split_eval
@@ -205,12 +209,14 @@ class DecisionTree(BaseModel):
         node.right = self._make_node(
             node=Node(depth=node.depth+1, parent=node),
             data=data.filter(right_mask),
-            y_true=y_true.filter(right_mask)
+            y_true=y_true.filter(right_mask),
+            max_features=max_features,
         )
         node.left = self._make_node(
             node=Node(depth=node.depth+1, parent=node),
             data=data.filter(left_mask),
-            y_true=y_true.filter(left_mask)
+            y_true=y_true.filter(left_mask),
+            max_features = max_features,
         )
 
         # either both left and right nodes are present, or both are absent. Otherwise, the prediction is not possible.
