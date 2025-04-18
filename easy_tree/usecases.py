@@ -71,10 +71,10 @@ def sample(data: pl.LazyFrame | pl.DataFrame, add_index: bool = True, seed: int 
         return read_data(tmp_file)
 
 
-def get_scoring_method(data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, colname: str) -> BaseSplitScoring:
+def get_scoring_method(data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: pl.Series) -> BaseSplitScoring:
     if y_true.dtype.is_numeric():
-        return VarianceScoring(data=data, y_true=y_true, column=colname)
-    return EntropyScoring(data=data, y_true=y_true, column=colname)
+        return VarianceScoring(data=data, y_true=y_true, column=column)
+    return EntropyScoring(data=data, y_true=y_true, column=column)
 
 
 def find_split_num(
@@ -82,7 +82,7 @@ def find_split_num(
     colname: str,
     y_true: pl.Series,
     scoring: BaseSplitScoring | None = None
-) -> SplitReport:
+) -> SplitReport | None:
     """
     Heuristic method for finding a split point, that maximizes variance reduction after the split.
 
@@ -111,16 +111,15 @@ def find_split_num(
         def is_dull(self) -> bool:
             return self.percentiles is None or self.empty_std
 
-    scoring = scoring or get_scoring_method(data=data, y_true=y_true, colname=colname)
-
     col = get_col(data, colname)
     if not col.dtype.is_numeric():
         raise TypeError(f"{colname} is not numeric or all-None.")
 
     col_stats = ColStats(col)
     if col_stats.is_dull:
-        return scoring.get_report()
+        return None
 
+    scoring = scoring or get_scoring_method(data=data, y_true=y_true, column=col)
     for split_pt in col_stats.percentiles:
         split_condition = ExpressionBuilder(
             AtomicExpression(colname=colname, operator=Operator.greater, rhs=split_pt)
@@ -140,7 +139,7 @@ def find_split_cat(
     y_true: pl.Series,
     min_count: int = 10,
     scoring: BaseSplitScoring | None = None
-) -> SplitReport:
+) -> SplitReport | None:
     """
     Method for finding a split point, that maximizes variance reduction after the split.
 
@@ -152,17 +151,16 @@ def find_split_cat(
 
     Returns
     -------
-    SplitReport
+    SplitReport | None
         Results of splitting.
     """
-
-    scoring = scoring or get_scoring_method(data=data, y_true=y_true, colname=colname)
 
     col = get_col(data, colname)
     val_counts = col.value_counts(sort=True)
     if len(val_counts) == 1:    # either all missing or constant
-        return scoring.get_report()
+        return None
 
+    scoring = scoring or get_scoring_method(data=data, y_true=y_true, column=col)
     has_missing_values = col.is_null().sum() > 0
     for category, count in val_counts.rows():  # None is included!
         if count < min_count:
