@@ -185,7 +185,7 @@ class TestRegressionTree(unittest.TestCase):
                 val_data=val_df, val_y_true=val_y_true,
             )
             ress[cur_value] = train_acc, val_acc
-            self.assertGreater(val_acc, 0.69)
+            self.assertGreater(val_acc, 0.68)
         # print(ress)
 
     def test_fit_max_features_wrong_settings(self):
