@@ -100,7 +100,7 @@ def find_split_num(
             xs = column.to_numpy()
             self.has_missing_values = np.isnan(xs).any()
             if xs.any():
-                percentiles = np.percentile(xs, [0, 25, 50, 75, 100])
+                percentiles = np.percentile(xs, [0, 25, 50, 75, 100])  # min, max + quartiles.
                 self.percentiles = sorted(set(percentiles[1:4]))
                 self.empty_std = percentiles[0] == percentiles[4]
             else:
