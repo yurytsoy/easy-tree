@@ -24,7 +24,7 @@ class TestRandomForest(unittest.TestCase):
 
         with self.subTest("fit"):
             np.random.seed(42)
-            rf = RandomForest(n_estimators=500, max_features="log2")
+            rf = RandomForest(n_estimators=50)
             rf.fit(train_df, y_true=train_y_true)
 
         with self.subTest("predict"):

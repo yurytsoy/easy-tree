@@ -183,7 +183,7 @@ class DecisionTree(BaseModel):
                 cur_split = find_split_num(data=data, colname=colname, y_true=y_true)
             else:
                 cur_split = find_split_cat(data=data, colname=colname, y_true=y_true)
-            if cur_split.best_idx is None:
+            if cur_split is None or cur_split.best_split_eval is None:
                 columns_to_drop.append(colname)
                 continue
 
