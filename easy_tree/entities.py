@@ -122,14 +122,10 @@ class BaseSplitScoring:
     split_scores: list[float]
     split_points: list[int | float | str | None]
 
-    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: str):
+    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: pl.Series):
         self.data = data
         self.y_true = y_true
-        self.column = column
-        if isinstance(self.data, pl.DataFrame):  # pre-fetch column values for speed
-            self.column_values = self.data.select(column).to_series().to_numpy()
-        else:
-            self.column_values = self.data.select(column).collect().to_series().to_numpy()
+        self.column_values = column.to_numpy()
         self.split_conditions = []
         self.split_scores = []
         self.split_points = []
@@ -151,7 +147,7 @@ class BaseSplitScoring:
 
 
 class VarianceScoring(BaseSplitScoring):
-    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: str):
+    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: pl.Series):
         super().__init__(data, y_true, column=column)
         self.variance = self.y_true.var()
 
