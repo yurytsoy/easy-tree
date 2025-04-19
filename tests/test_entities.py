@@ -6,6 +6,7 @@ import polars as pl
 import easy_tree as et
 from easy_tree.entities import VarianceScoring, EntropyScoring
 from easy_tree.logic import AtomicExpression, Operator, ExpressionBuilder
+from easy_tree.usecases import get_col
 
 
 class TestNode(unittest.TestCase):
@@ -137,7 +138,7 @@ class TestVarianceScoring(unittest.TestCase):
             "bar": list(range(100)) + [None] * 10
         })
         y_true = pl.Series(values=np.random.choice([0, 1], size=110))
-        scoring = VarianceScoring(data, y_true=y_true, column="foo")
+        scoring = VarianceScoring(data, y_true=y_true, column=get_col(data, "foo"))
         scoring.add_split_condition(
             ExpressionBuilder(
                 AtomicExpression(colname="foo", operator=Operator.greater, rhs=10)
@@ -167,7 +168,7 @@ class TestEntropyScoring(unittest.TestCase):
             "bar": list(range(100)) + [None] * 10
         })
         y_true = pl.Series(values=np.random.choice(["0", "1"], size=110))
-        scoring = EntropyScoring(data, y_true=y_true, column="foo")
+        scoring = EntropyScoring(data, y_true=y_true, column=get_col(data, "foo"))
         scoring.add_split_condition(
             ExpressionBuilder(
                 AtomicExpression(colname="foo", operator=Operator.greater, rhs=10)

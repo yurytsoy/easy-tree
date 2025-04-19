@@ -34,10 +34,7 @@ class TestUsecases(unittest.TestCase):
             ).alias("all_ones")
         ).collect().lazy()
         res = find_split_num(df, colname="all_ones", y_true=self.y_true)
-        self.assertIsNone(res.best_idx)
-        self.assertIsNone(res.best_split_point)
-        self.assertIsNone(res.best_split_eval)
-        self.assertIsNone(res.best_split_condition)
+        self.assertIsNone(res)
 
     def test_find_split_num_skewed_percentile(self):
         """
@@ -95,10 +92,7 @@ class TestUsecases(unittest.TestCase):
             ).alias("constant")
         ).collect().lazy()
         res = find_split_cat(df, colname="constant", y_true=self.y_true)
-        self.assertIsNone(res.best_idx)
-        self.assertIsNone(res.best_split_point)
-        self.assertIsNone(res.best_split_eval)
-        self.assertIsNone(res.best_split_condition)
+        self.assertIsNone(res)
 
     def test_sample(self):
         with self.subTest("With index"):
