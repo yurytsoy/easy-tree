@@ -35,5 +35,30 @@ class TestRandomForest(unittest.TestCase):
             val_y_pred = rf.predict(val_df)
             val_acc = ((val_y_pred > pred_thr) == val_y_true.cast(bool)).mean()
             print(f"{train_acc:.4f} / {val_acc:.4f}")
-            # self.assertGreater(train_acc, 0.817)
-            # self.assertGreater(val_acc, 0.819)
+            self.assertGreater(train_acc, 0.819)
+            self.assertGreater(val_acc, 0.819)
+
+    def test_fit_classification(self):
+        rng = np.random.default_rng(42)
+        train_flag = pl.Series(values=rng.choice([True, False], size=len(self.y_true), p=[0.8, 0.2]))
+        y_true = self.y_true.cast(str)
+        df = self.df.drop("Name")
+        train_df = df.filter(train_flag).collect()
+        train_y_true = y_true.filter(train_flag)
+        val_df = df.filter(~train_flag).collect()
+        val_y_true = y_true.filter(~train_flag)
+
+        with self.subTest("fit"):
+            np.random.seed(42)
+            rf = RandomForest(n_estimators=10)
+            rf.fit(train_df, y_true=train_y_true)
+
+        with self.subTest("predict"):
+            train_y_pred = rf.predict(train_df)
+            train_acc = (train_y_pred == train_y_true).mean()
+
+            val_y_pred = rf.predict(val_df)
+            val_acc = (val_y_pred == val_y_true).mean()
+            print(f"{train_acc:.4f} / {val_acc:.4f}")
+            self.assertGreater(train_acc, 0.823)
+            self.assertGreater(val_acc, 0.796)

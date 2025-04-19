@@ -233,7 +233,7 @@ class DecisionTree(BaseModel):
 
     def predict(self, data: pl.LazyFrame) -> pl.Series:
         res = None
-        for leaf in self.leaves + [self.root_]:
+        for leaf in self.leaves:
             cur_flag = leaf.full_condition.apply(data)
 
             if res is None:

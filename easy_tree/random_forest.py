@@ -51,7 +51,12 @@ class RandomForest(BaseModel):
             res = self._fit_tree(data, y_true, k)
             self.trees_.append(res.tree)
             self.oob_counts_[res.oob_idxs] += 1
-        # with ThreadPoolExecutor(max_workers=4) as executor:
+
+        # Note: parallel execution with ThreadPoolExecutor does not provide improvement and
+        #   conversely yields longer runtime (the example is below) even though CPU load does increase (by ~50-100%).
+        #   The exact reason for the lack of speedup is unclear and would be good to address in the future.
+        #   More broad testing against datasets of different sizes and different RF settings is required.
+        # with ThreadPoolExecutor(max_workers=16) as executor:
         #     future_to_trees = [executor.submit(self._fit_tree, data, y_true, k) for k in range(self.n_estimators)]
         #     for future in as_completed(future_to_trees):
         #         try:
@@ -77,11 +82,10 @@ class RandomForest(BaseModel):
         seed = self._seeds[tree_idx] if tree_idx is not None else None
         cur_data = sample(data, add_index=True, seed=seed)
         idxs = get_col(cur_data, "__index__")
-        cur_y_true = y_true[idxs]
 
         tree = DecisionTree(
             max_depth=self.max_depth, min_leaf_size=self.min_leaf_size, max_features=self.max_features
-        ).fit(cur_data.drop("__index__"), cur_y_true)
+        ).fit(cur_data.drop("__index__"), y_true[idxs])
         return FitTreeReport(tree, oob_idxs=sorted(set(range(len(y_true))) - set(idxs)))
 
     def predict(self, data: pl.LazyFrame) -> pl.Series:
@@ -103,4 +107,18 @@ class RandomForest(BaseModel):
 
         else:
             # classification => collect distribution of classes
-            ...
+            class_counts = dict()
+            for tree in self.trees_:
+                tree_pred = tree.predict(data)
+                for class_label in tree_pred.unique():
+                    if class_label not in class_counts:
+                        class_counts[class_label] = (tree_pred == class_label).cast(int)
+                    else:
+                        class_counts[class_label] = class_counts[class_label] + (tree_pred == class_label).cast(int)
+
+            classes = list(class_counts)
+            pred = (pl.DataFrame(class_counts)
+                    .map_rows(lambda row: classes[np.argmax(row)])
+                    .rename({"map": "prediction"})
+                    .to_series())
+            return pred
