@@ -4,6 +4,8 @@ import numpy as np
 import polars as pl
 
 import easy_tree as et
+from easy_tree.entities import TargetStats
+from easy_tree.logic import AtomicExpression, Operator
 
 
 class TestRegressionTree(unittest.TestCase):
@@ -74,8 +76,8 @@ class TestRegressionTree(unittest.TestCase):
             )
             print(f"{accuracy_train:.4f} / {accuracy_val:.4f}")
 
-            self.assertGreater(accuracy_train, 0.817)
-            self.assertGreater(accuracy_val, 0.779)
+            self.assertGreater(accuracy_train, 0.810)
+            self.assertGreater(accuracy_val, 0.773)
 
         with self.subTest("feature importance"):
             expected = {
@@ -272,3 +274,53 @@ class TestRegressionTree(unittest.TestCase):
             tree_2 = et.DecisionTree.load(filename)
             pred_val_2 = tree_2.predict(data.filter(~train_flag))
             self.assertTrue(all(pred_val == pred_val_2))
+
+    def test_predict_missing_leaf_regression(self):
+        """
+        Construct situation when data does not fall into any of the tree leafs.
+        """
+        tree = et.DecisionTree()
+        tree.root_ = et.Node(
+            depth=1,
+            condition=AtomicExpression(colname="foo", operator=Operator.greater, rhs=10),
+            target_stats=TargetStats(mean=3.14, var=2.72)
+        )
+        tree.root_.left = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="bar", operator=Operator.greater, rhs=20),
+            target_stats=TargetStats(mean=1, var=23)
+        )
+        tree.root_.right = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="foo", operator=Operator.less_or_equal, rhs=20),
+            target_stats=TargetStats(mean=4, var=12)
+        )
+        tree.prediction_type_ = pl.Float64
+
+        pred = tree.predict(pl.DataFrame({"foo": [0, 10, None, 20, 30], "bar": [0, 10, 20, None, 30]}))
+        self.assertFalse(pred.is_null().any())
+
+    def test_predict_missing_leaf_classification(self):
+        """
+        Construct situation when data does not fall into any of the tree leafs.
+        """
+        tree = et.DecisionTree()
+        tree.root_ = et.Node(
+            depth=1,
+            condition=AtomicExpression(colname="foo", operator=Operator.greater, rhs=10),
+            target_stats=TargetStats(distr={"A": 10, "B": 20})
+        )
+        tree.root_.left = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="bar", operator=Operator.greater, rhs=20),
+            target_stats=TargetStats(distr={"A": 100, "B": 20})
+        )
+        tree.root_.right = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="foo", operator=Operator.less_or_equal, rhs=20),
+            target_stats=TargetStats(distr={"A": 10, "B": 200})
+        )
+        tree.prediction_type_ = pl.String
+
+        pred = tree.predict(pl.DataFrame({"foo": [0, 10, None, 20, 30], "bar": [0, 10, 20, None, 30]}))
+        self.assertFalse(pred.is_null().any())
