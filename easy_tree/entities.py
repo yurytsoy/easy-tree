@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import numpy as np
+import orjson
 import polars as pl
 
 from .logic import BaseExpression, ExpressionBuilder, AtomicExpression
@@ -212,3 +213,21 @@ class BaseModel:
 
     def predict(self, data: pl.LazyFrame) -> pl.Series:
         pass
+
+    def serialize(self) -> dict:
+        pass
+
+    def save(self, filename: str):
+        with open(filename, "wb") as f:
+            f.write(orjson.dumps(self.serialize(), option=orjson.OPT_SERIALIZE_NUMPY))
+
+    @classmethod
+    def deserialize(cls, data: dict) -> BaseModel:
+        pass
+
+    @classmethod
+    def load(cls, filename: str) -> BaseModel:
+        with open(filename, "rb") as f:
+            data = orjson.loads(f.read())
+
+        return cls.deserialize(data)

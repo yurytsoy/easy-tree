@@ -257,24 +257,17 @@ class DecisionTree(BaseModel):
 
         return res
 
-    def save(self, filename: str):
-        with open(filename, "wb") as f:
-            f.write(orjson.dumps(
-                {
-                    "root_": self.root_.serialize() if self.root_ is not None else None,
-                    "max_depth": self.max_depth,
-                    "min_leaf_size": self.min_leaf_size,
-                    "feature_importances_": self.feature_importances_,
-                    "prediction_type_": str(self.prediction_type_) if self.prediction_type_ else None,
-                },
-                option=orjson.OPT_SERIALIZE_NUMPY)
-            )
+    def serialize(self) -> dict:
+        return {
+            "root_": self.root_.serialize() if self.root_ is not None else None,
+            "max_depth": self.max_depth,
+            "min_leaf_size": self.min_leaf_size,
+            "feature_importances_": self.feature_importances_,
+            "prediction_type_": str(self.prediction_type_) if self.prediction_type_ else None,
+        }
 
     @staticmethod
-    def load(filename: str) -> DecisionTree:
-        with open(filename, "rb") as f:
-            data = orjson.loads(f.read())
-
+    def deserialize(data: dict) -> DecisionTree:
         res = DecisionTree(
             max_depth=data["max_depth"],
             min_leaf_size=data["min_leaf_size"],
