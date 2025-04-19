@@ -72,11 +72,15 @@ class Node:
 
     @staticmethod
     def deserialize(data: dict) -> Node:
+        if data["target_stats"] is not None:
+            target_stats = TargetStats(**data["target_stats"]) if isinstance(data["target_stats"], dict) else data["target_stats"]
+        else:
+            target_stats = None
         res = Node(
             depth=data["depth"],
             condition=BaseExpression.deserialize(data["condition"]),
             size=data["size"],
-            target_stats=TargetStats(**data["target_stats"]) if data["target_stats"] is not None else None,
+            target_stats=target_stats, # TargetStats(**data["target_stats"]) if data["target_stats"] is not None else None,
             left=Node.deserialize(data["left"]) if data["left"] is not None else None,
             right=Node.deserialize(data["right"]) if data["right"] is not None else None,
         )
@@ -217,13 +221,13 @@ class BaseModel:
     def serialize(self) -> dict:
         pass
 
-    def save(self, filename: str):
-        with open(filename, "wb") as f:
-            f.write(orjson.dumps(self.serialize(), option=orjson.OPT_SERIALIZE_NUMPY))
-
     @classmethod
     def deserialize(cls, data: dict) -> BaseModel:
         pass
+
+    def save(self, filename: str):
+        with open(filename, "wb") as f:
+            f.write(orjson.dumps(self.serialize(), option=orjson.OPT_SERIALIZE_NUMPY))
 
     @classmethod
     def load(cls, filename: str) -> BaseModel:

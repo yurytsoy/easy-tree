@@ -31,7 +31,6 @@ class RandomForest(BaseModel):
         self.trees_ = []
         self.feature_importances_ = None
         self.oob_counts_ = None
-        self._seeds = []  # array of RNG seeds to reproducibility of sampling
 
     def fit(self, data: pl.LazyFrame | pl.DataFrame | str, y_true: pl.Series | str) -> BaseModel:
         # prepare data and target
@@ -46,9 +45,9 @@ class RandomForest(BaseModel):
 
         # train trees
         self.oob_counts_ = np.zeros(len(y_true))
-        self._seeds = np.random.randint(10000, size=self.n_estimators)
+        seeds = np.random.randint(10000, size=self.n_estimators)
         for k in range(self.n_estimators):
-            res = self._fit_tree(data, y_true, k)
+            res = self._fit_tree(data, y_true, seeds[k])
             self.trees_.append(res.tree)
             self.oob_counts_[res.oob_idxs] += 1
 
@@ -78,8 +77,7 @@ class RandomForest(BaseModel):
 
         return self
 
-    def _fit_tree(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, tree_idx: int=None) -> FitTreeReport:
-        seed = self._seeds[tree_idx] if tree_idx is not None else None
+    def _fit_tree(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, seed: int=None) -> FitTreeReport:
         cur_data = sample(data, add_index=True, seed=seed)
         idxs = get_col(cur_data, "__index__")
 
@@ -116,9 +114,48 @@ class RandomForest(BaseModel):
                     else:
                         class_counts[class_label] = class_counts[class_label] + (tree_pred == class_label).cast(int)
 
-            classes = list(class_counts)
-            pred = (pl.DataFrame(class_counts)
+            # The tie-breaking is unstable, so that class with maximal counts can be determined ...
+            #   khm, indeterministically.
+            # In order to fix that, the classes are sorted by their frequency, the most frequent class going first.
+            def get_training_class_probabilities() -> dict[str, float]:
+                res = defaultdict(lambda: 0)
+                for tree in self.trees_:
+                    for label, count in tree.root_.target_stats.distr.items():
+                        res[label] += count
+                total = sum(res.values())
+                res = {label: count / total for label, count in res.items()}
+                return {label: ratio for label, ratio in sorted(res.items(), key=lambda item: item[1], reverse=True)}
+
+            probs = get_training_class_probabilities()
+            classes = list(probs)
+            pred = (pl.DataFrame([class_counts[label] for label in classes if label in class_counts])
                     .map_rows(lambda row: classes[np.argmax(row)])
                     .rename({"map": "prediction"})
                     .to_series())
             return pred
+
+    def serialize(self) -> dict:
+        return {
+            "n_estimators": self.n_estimators,
+            "max_depth": self.max_depth,
+            "min_leaf_size": self.min_leaf_size,
+            "max_features": self.max_features,
+            "n_jobs": self.n_jobs,
+            "trees_": [tree.serialize() for tree in self.trees_],
+            "feature_importances_": self.feature_importances_,
+            "oob_counts_": self.oob_counts_,
+        }
+
+    @classmethod
+    def deserialize(cls, data: dict) -> RandomForest:
+        res = RandomForest(
+            n_estimators=data["n_estimators"],
+            max_depth=data["max_depth"],
+            min_leaf_size=data["min_leaf_size"],
+            max_features=data["max_features"],
+            n_jobs=data["n_jobs"],
+        )
+        res.trees_ = [DecisionTree.deserialize(tree_info) for tree_info in data["trees_"]]
+        res.feature_importances_ = data["feature_importances_"]
+        res.oob_counts_ = data["oob_counts_"]
+        return res
