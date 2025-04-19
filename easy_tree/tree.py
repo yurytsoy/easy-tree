@@ -233,7 +233,7 @@ class DecisionTree(BaseModel):
 
     def predict(self, data: pl.LazyFrame) -> pl.Series:
         res = None
-        for leaf in self.leaves:
+        for leaf in self.leaves + [self.root_]:
             cur_flag = leaf.full_condition.apply(data)
 
             if res is None:
@@ -244,6 +244,17 @@ class DecisionTree(BaseModel):
             else:
                 max_class, max_count = max(leaf.target_stats.distr.items(), key=lambda item: item[1])
                 res = res.set(cur_flag, max_class)
+
+        if res.is_null().any():
+            # In some cases data can contain samples, which are not falling into any of the existing leafs.
+            #   For that case use `root_` as a failover.
+            empty_preds = res.is_null()
+            if self.prediction_type_.is_numeric():
+                res = res.set(empty_preds, self.root_.target_stats.mean)
+            else:
+                max_class, max_count = max(self.root_.target_stats.distr.items(), key=lambda item: item[1])
+                res = res.set(empty_preds, max_class)
+
         return res
 
     def save(self, filename: str):
