@@ -21,22 +21,21 @@ class TestRandomForest(unittest.TestCase):
         val_df = self.df.filter(~train_flag).collect()
         val_y_true = self.y_true.filter(~train_flag)
 
-        for _ in range(10):
-            with self.subTest("fit"):
-                np.random.seed(42)
-                rf = RandomForest(n_estimators=50)
-                rf.fit(train_df, y_true=train_y_true)
+        with self.subTest("fit"):
+            np.random.seed(42)
+            rf = RandomForest(n_estimators=30)
+            rf.fit(train_df, y_true=train_y_true)
 
-            with self.subTest("predict"):
-                train_y_pred = rf.predict(train_df)
-                pred_thr = train_y_true.mean()
-                train_acc = ((train_y_pred > pred_thr) == train_y_true.cast(bool)).mean()
+        with self.subTest("predict"):
+            train_y_pred = rf.predict(train_df)
+            pred_thr = train_y_true.mean()
+            train_acc = ((train_y_pred > pred_thr) == train_y_true.cast(bool)).mean()
 
-                val_y_pred = rf.predict(val_df)
-                val_acc = ((val_y_pred > pred_thr) == val_y_true.cast(bool)).mean()
-                print(f"{train_acc:.4f} / {val_acc:.4f}")
-                # self.assertGreater(train_acc, 0.819)
-                # self.assertGreater(val_acc, 0.819)
+            val_y_pred = rf.predict(val_df)
+            val_acc = ((val_y_pred > pred_thr) == val_y_true.cast(bool)).mean()
+            print(f"{train_acc:.4f} / {val_acc:.4f}")
+            self.assertGreater(train_acc, 0.817)
+            self.assertGreater(val_acc, 0.819)
 
     def test_fit_classification(self):
         rng = np.random.default_rng(42)
@@ -47,24 +46,43 @@ class TestRandomForest(unittest.TestCase):
         val_df = self.df.filter(~train_flag).collect()
         val_y_true = y_true.filter(~train_flag)
 
-        ress = []
-        for _ in range(10):
-            with self.subTest("fit"):
-                np.random.seed(42)
-                rf = RandomForest(n_estimators=30)
-                rf.fit(train_df, y_true=train_y_true)
-                ress.append(rf.serialize())
+        with self.subTest("fit"):
+            np.random.seed(42)
+            rf = RandomForest(n_estimators=10)
+            rf.fit(train_df, y_true=train_y_true)
 
-            with self.subTest("predict"):
-                train_y_pred = rf.predict(train_df)
-                train_acc = (train_y_pred == train_y_true).mean()
+        with self.subTest("predict"):
+            train_y_pred = rf.predict(train_df)
+            train_acc = (train_y_pred == train_y_true).mean()
 
-                val_y_pred = rf.predict(val_df)
-                val_acc = (val_y_pred == val_y_true).mean()
-                print(f"{train_acc:.4f} / {val_acc:.4f}")
-                # self.assertGreater(train_acc, 0.819)
-                # self.assertGreater(val_acc, 0.796)
-        # TODO: compare random forests
+            val_y_pred = rf.predict(val_df)
+            val_acc = (val_y_pred == val_y_true).mean()
+            print(f"{train_acc:.4f} / {val_acc:.4f}")
+            self.assertGreater(train_acc, 0.820)
+            self.assertGreater(val_acc, 0.808)
+
+    def test_predict_classification_reproducible(self):
+        rng = np.random.default_rng(42)
+        train_flag = pl.Series(values=rng.choice([True, False], size=len(self.y_true), p=[0.8, 0.2]))
+        y_true = self.y_true.cast(str)
+        train_df = self.df.filter(train_flag).collect()
+        train_y_true = y_true.filter(train_flag)
+        val_df = self.df.filter(~train_flag).collect()
+        val_y_true = y_true.filter(~train_flag)
+
+        with self.subTest("fit"):
+            np.random.seed(42)
+            rf = RandomForest(n_estimators=10)
+            rf.fit(train_df, y_true=train_y_true)
+            rf_pred_train = rf.predict(train_df)
+            rf_pred_val = rf.predict(val_df)
+
+        with self.subTest("predict"):
+            for _ in range(10):
+                rf_pred_train_new = rf.predict(train_df)
+                self.assertTrue(all(rf_pred_train == rf_pred_train_new))
+                rf_pred_val_new = rf.predict(val_df)
+                self.assertTrue(all(rf_pred_val == rf_pred_val_new))
 
     def test_serialization_deserialization_regression(self):
         with self.subTest("fit"):

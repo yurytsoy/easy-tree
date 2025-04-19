@@ -56,7 +56,8 @@ class RandomForest(BaseModel):
         #   The exact reason for the lack of speedup is unclear and would be good to address in the future.
         #   More broad testing against datasets of different sizes and different RF settings is required.
         # with ThreadPoolExecutor(max_workers=16) as executor:
-        #     future_to_trees = [executor.submit(self._fit_tree, data, y_true, k) for k in range(self.n_estimators)]
+        #     seeds = np.random.randint(10000, size=self.n_estimators)
+        #     future_to_trees = [executor.submit(self._fit_tree, data, y_true, seed) for k, seed in zip(range(self.n_estimators), seeds)]
         #     for future in as_completed(future_to_trees):
         #         try:
         #             res = future.result()
@@ -117,16 +118,15 @@ class RandomForest(BaseModel):
             # The tie-breaking is unstable, so that class with maximal counts can be determined ...
             #   khm, indeterministically.
             # In order to fix that, the classes are sorted by their frequency, the most frequent class going first.
-            def get_training_class_probabilities() -> dict[str, float]:
+            def get_ordered_training_class_probabilities() -> dict[str, float]:
                 res = defaultdict(lambda: 0)
                 for tree in self.trees_:
                     for label, count in tree.root_.target_stats.distr.items():
                         res[label] += count
                 total = sum(res.values())
-                res = {label: count / total for label, count in res.items()}
-                return {label: ratio for label, ratio in sorted(res.items(), key=lambda item: item[1], reverse=True)}
+                return {label: count / total for label, count in res.items()}
 
-            probs = get_training_class_probabilities()
+            probs = get_ordered_training_class_probabilities()
             classes = list(probs)
             pred = (pl.DataFrame([class_counts[label] for label in classes if label in class_counts])
                     .map_rows(lambda row: classes[np.argmax(row)])
