@@ -160,7 +160,8 @@ class DecisionTree(BaseModel):
                 node.target_stats.mean = y_true.mean()
                 node.target_stats.var = y_true.var()
             else:
-                node.target_stats.distr = {cat: count for cat, count in y_true.value_counts().rows()}
+                distr = {cat: count for cat, count in y_true.value_counts().rows()}
+                node.target_stats.distr = {label: distr[label] for label in sorted(distr)}
 
         init_node_stats()
 
@@ -194,18 +195,18 @@ class DecisionTree(BaseModel):
             return node
 
         if columns_to_drop:
+            if max_features == len(data.columns):
+                max_features = max(1, max_features-len(columns_to_drop))  # update max_features only if it is same as the number of columns
             data = data.drop(columns_to_drop)
+            max_features = min(max_features, len(data.columns))  # in order to avoid cases, when max_features > number of columns
 
         # note: split score is written to the *parent* node!
         node.target_stats.score_reduction = best_split.best_split_eval
 
-        # make conditions leading to the right and left branches
-        right_condition = best_split.best_split_condition
-        left_condition = ExpressionBuilder(best_split.best_split_condition).not_().current
-
         # make child nodes
+        right_condition = best_split.best_split_condition
         right_mask = right_condition.apply(data)
-        left_mask = left_condition.apply(data)
+        left_mask = ~right_mask
         node.right = self._make_node(
             node=Node(depth=node.depth+1, parent=node),
             data=data.filter(right_mask),
