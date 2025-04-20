@@ -1,7 +1,7 @@
 [project]
 name = "the-easy-tree"
-version = "0.1.3"
-description = "Decision tree algorithm implementation for regression and classification with minimal boilerplate code."
+version = "0.2.0"
+description = "Decision tree and Random Forest algorithms implementation for regression and classification with minimal boilerplate code."
 authors = [
     {name = "Yury Choi", email = "yurytsoy@gmail.com"}
 ]

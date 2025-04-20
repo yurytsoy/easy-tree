@@ -8,7 +8,10 @@ Decision tree and Random Forest algorithms implementation for regression and cla
 * Easy to extract and use rules corresponding to leaves.
 * Save and load trained model.
 * Little niceties:
-    * Supports training straight from the CSV-file. One-line training is also possible.
+    * Supports training straight from the CSV-file.
+    * One-line training is also possible.
+        * `tree = DecisionTree().fit(data="tests/data/titanic_train.csv", y_true="Embarked")` 
+        * `forest = RandomForest().fit(data="tests/data/titanic_train.csv", y_true="Embarked")` 
     * Simple library to build and apply logical expressions (in the `easy_tree/logic.py`).
 
 The implementation does not provide many parameters on purpose. The main goal is to provide a robust

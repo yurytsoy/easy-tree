@@ -1,3 +1,3 @@
-from .entities import Node
-from .random_forest import RandomForest
-from .tree import DecisionTree
+from .entities import Node  # noqa
+from .random_forest import RandomForest  # noqa
+from .tree import DecisionTree  # noqa

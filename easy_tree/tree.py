@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 import numpy as np
-import orjson
 import polars as pl
 
-from .logic import ExpressionBuilder
 from .entities import Node, TargetStats, BaseModel
 from .usecases import find_split_cat, find_split_num, read_data, get_col
 
@@ -196,9 +194,10 @@ class DecisionTree(BaseModel):
 
         if columns_to_drop:
             if max_features == len(data.columns):
-                max_features = max(1, max_features-len(columns_to_drop))  # update max_features only if it is same as the number of columns
+                # update max_features only if it is same as the number of columns
+                max_features = max(1, max_features-len(columns_to_drop))
             data = data.drop(columns_to_drop)
-            max_features = min(max_features, len(data.columns))  # in order to avoid cases, when max_features > number of columns
+            max_features = min(max_features, len(data.columns))  # avoid cases, when max_features > number of columns
 
         # note: split score is written to the *parent* node!
         node.target_stats.score_reduction = best_split.best_split_eval
@@ -217,7 +216,7 @@ class DecisionTree(BaseModel):
             node=Node(depth=node.depth+1, parent=node),
             data=data.filter(left_mask),
             y_true=y_true.filter(left_mask),
-            max_features = max_features,
+            max_features=max_features,
         )
 
         # either both left and right nodes are present, or both are absent. Otherwise, the prediction is not possible.
