@@ -24,8 +24,8 @@ class Node:
 
     depth: int
     condition: BaseExpression | None = None  # the most *recent* conditions that lead to the node.
-    right: Node | None = None  # "Yes" branch: corresponds to the `greater` for numerical or `equal` for categorical variables.
-    left: Node | None = None  # "No" branch: corresponds to the `less or equal` for numerical or `not equal` for categorical variables.
+    right: Node | None = None  # "Yes" branch: `greater` for numerical or `equal` for categorical variables.
+    left: Node | None = None  # "No" branch: `less or equal` for numerical or `not equal` for categorical variables.
     parent: Node | None = None
     size: int | None = None  # number of samples from the training data that fall into the node.
     target_stats: TargetStats | None = None
@@ -43,7 +43,7 @@ class Node:
         if self.parent is None:  # if root node
             return self.condition
 
-        is_left = id(self.parent.left) == id(self)  # checks whether node is located in the left branch, and should negate the full path.
+        is_left = id(self.parent.left) == id(self)  # if node is located in the left branch
         parent_cond = self.parent.full_condition  # "path" to the current node
         if is_left:  # negate the last condition ("path" segment)
             if isinstance(parent_cond, AtomicExpression):
@@ -73,7 +73,8 @@ class Node:
     @staticmethod
     def deserialize(data: dict) -> Node:
         if data["target_stats"] is not None:
-            target_stats = TargetStats(**data["target_stats"]) if isinstance(data["target_stats"], dict) else data["target_stats"]
+            target_stats = TargetStats(**data["target_stats"])\
+                if isinstance(data["target_stats"], dict) else data["target_stats"]
         else:
             target_stats = None
         res = Node(
@@ -159,8 +160,11 @@ class VarianceScoring(BaseSplitScoring):
 
     def add_split_condition(self, condition: BaseExpression, split_point: int | float | str | None):
         true_mask = condition.apply_numpy(self.column_values)
-        if true_mask.all() or true_mask.sum() <= 1:
-            return  # one of the splits is empty or contains only 1 element.
+        try:
+            if true_mask.all() or true_mask.sum() <= 1:
+                return  # one of the splits is empty or contains only 1 element.
+        except AttributeError:
+            print("asdfasdf")
         false_mask = ~true_mask
         if false_mask.all() or false_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
