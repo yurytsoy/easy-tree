@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import numpy as np
 import polars as pl
 
 
@@ -31,6 +33,14 @@ class BaseExpression:
         if isinstance(res, pl.LazyFrame):
             res = res.collect()
         return res.to_series()
+
+    def apply_numpy(self, xs: np.ndarray) -> np.ndarray:
+        """
+        Takes numpy array and returns array of Booleans corresponding to the expression.
+
+        Note: it is implicitly assumed that *all* conditions in the expression should be applied to the same variable.
+        """
+        pass
 
     def _serialize(self) -> dict:
         pass
@@ -80,14 +90,6 @@ class AtomicExpression(BaseExpression):
     def to_polars(self) -> pl.Expr:
         """
         Returns Polars expression for condition. The expression result is Boolean.
-
-        Args
-        ----
-        propagate_null : bool, default=True
-            Defines how empty values are handled. Polars propagates null and NaNs during comparison.
-            This can result is having undefined outcomes when combining conditions.
-            In order to avoid nulls in the comparison results we can force boolean outcome when data contains
-            missing values.
         """
 
         if self.operator == Operator.less:
@@ -113,6 +115,31 @@ class AtomicExpression(BaseExpression):
                 return pl.col(self.colname).ne(self.rhs)
             else:
                 return pl.col(self.colname).is_not_null()
+
+    def apply_numpy(self, xs: np.ndarray) -> np.ndarray:
+        if self.operator == Operator.less:
+            return xs < self.rhs
+
+        if self.operator == Operator.less_or_equal:
+            return xs <= self.rhs
+
+        if self.operator == Operator.greater:
+            return xs > self.rhs
+
+        if self.operator == Operator.greater_or_equal:
+            return xs >= self.rhs
+
+        if self.operator == Operator.equal:
+            if self.rhs:
+                return xs == self.rhs
+            else:
+                return np.isnan(xs) if np.issubdtype(xs.dtype, np.number) else xs == None
+
+        if self.operator == Operator.not_equal:
+            if self.rhs:
+                return xs != self.rhs
+            else:
+                return ~np.isnan(xs) if np.issubdtype(xs.dtype, np.number) else xs != None
 
     def not_(self) -> AtomicExpression:
         not_operator = {
@@ -153,6 +180,9 @@ class AndExpression(BaseExpression):
     def to_polars(self) -> pl.Expr:
         return self.left.to_polars() & self.right.to_polars()
 
+    def apply_numpy(self, xs: np.ndarray) -> np.ndarray:
+        return self.left.apply_numpy(xs) & self.right.apply_numpy(xs)
+
     def __repr__(self) -> str:
         return f"({self.left}) AND ({self.right})"
 
@@ -181,6 +211,9 @@ class OrExpression(BaseExpression):
 
     def to_polars(self) -> pl.Expr:
         return self.left.to_polars() | self.right.to_polars()
+
+    def apply_numpy(self, xs: np.ndarray) -> np.ndarray:
+        return self.left.apply_numpy(xs) | self.right.apply_numpy(xs)
 
     def __repr__(self) -> str:
         return f"({self.left}) OR ({self.right})"
@@ -211,6 +244,9 @@ class NotExpression(BaseExpression):
 
     def to_polars(self) -> pl.Expr:
         return ~self.expr.to_polars()
+
+    def apply_numpy(self, xs: np.ndarray) -> np.ndarray:
+        return ~self.expr.apply_numpy(xs)
 
     def __repr__(self) -> str:
         return f"NOT ({self.expr})"
@@ -272,6 +308,12 @@ class ExpressionBuilder(BaseExpression):
             raise RuntimeError()
 
         return self.current.apply(data)
+
+    def apply_numpy(self, xs: np.ndarray) -> np.ndarray:
+        if self.current is None:
+            raise RuntimeError()
+
+        return self.current.apply_numpy(xs)
 
     def __repr__(self) -> str:
         if self.current is None:

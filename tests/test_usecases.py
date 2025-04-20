@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import polars as pl
 
-from easy_tree.usecases import find_split_cat, find_split_num
+from easy_tree.usecases import find_split_cat, find_split_num, sample
 
 
 class TestUsecases(unittest.TestCase):
@@ -34,10 +34,7 @@ class TestUsecases(unittest.TestCase):
             ).alias("all_ones")
         ).collect().lazy()
         res = find_split_num(df, colname="all_ones", y_true=self.y_true)
-        self.assertIsNone(res.best_idx)
-        self.assertIsNone(res.best_split_point)
-        self.assertIsNone(res.best_split_eval)
-        self.assertIsNone(res.best_split_condition)
+        self.assertIsNone(res)
 
     def test_find_split_num_skewed_percentile(self):
         """
@@ -95,8 +92,37 @@ class TestUsecases(unittest.TestCase):
             ).alias("constant")
         ).collect().lazy()
         res = find_split_cat(df, colname="constant", y_true=self.y_true)
-        self.assertIsNone(res.best_idx)
-        self.assertIsNone(res.best_split_point)
-        self.assertIsNone(res.best_split_eval)
-        self.assertIsNone(res.best_split_condition)
+        self.assertIsNone(res)
 
+    def test_sample(self):
+        with self.subTest("With index"):
+            res = sample(self.df, add_index=True)
+            idx_col = res.select("__index__").collect().to_series()
+            self.assertLess(idx_col.n_unique(), len(idx_col) * 2 / 3)  # according to the bootstrap probability (https://stats.stackexchange.com/questions/173520/random-forests-out-of-bag-sample-size).
+
+        with self.subTest("Without index"):
+            res = sample(self.df, add_index=False)
+            self.assertFalse("__index__" in res.columns)
+            id_col = res.select("PassengerId").collect().to_series()
+            self.assertLess(id_col.n_unique(), len(idx_col) * 2 / 3)  # according to the bootstrap probability (https://stats.stackexchange.com/questions/173520/random-forests-out-of-bag-sample-size).
+
+        with self.subTest("Reproducibility: check that result contain same id_col regardless of the index"):
+            for _ in range(10):
+                cur_res = sample(self.df)
+                cur_id_col = cur_res.select("PassengerId").collect().to_series()
+                self.assertTrue(all(cur_id_col == id_col))
+
+                cur_res = sample(self.df, add_index=False)
+                cur_id_col = cur_res.select("PassengerId").collect().to_series()
+                self.assertTrue(all(cur_id_col == id_col))
+
+        with self.subTest("Reproducibility: change seed"):
+            for k in range(10):
+                cur_res = sample(self.df, seed=k)
+                cur_id_col = cur_res.select("PassengerId").collect().to_series()
+                self.assertFalse(all(cur_id_col == id_col))  # different from reference, due to seed
+
+                cur_res_2 = sample(self.df, add_index=False, seed=k)
+                cur_id_col_2 = cur_res_2.select("PassengerId").collect().to_series()
+                self.assertFalse(all(cur_id_col_2 == id_col))  # different from reference, due to seed
+                self.assertTrue(all(cur_id_col == cur_id_col_2))  # identical due to seed

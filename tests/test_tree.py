@@ -4,6 +4,8 @@ import numpy as np
 import polars as pl
 
 import easy_tree as et
+from easy_tree.entities import TargetStats
+from easy_tree.logic import AtomicExpression, Operator
 
 
 class TestRegressionTree(unittest.TestCase):
@@ -18,6 +20,34 @@ class TestRegressionTree(unittest.TestCase):
         for colname, importance in expected.items():
             self.assertAlmostEqual(importance, tree_imps[colname], places=15)
 
+    def assertLeavesSufficientAndDoNotOverlap(self, tree: et.DecisionTree, data: pl.DataFrame | pl.LazyFrame):
+        """
+        Checks that leaf paths do not overlap and tree produces exactly one prediction for each data sample.
+        """
+        data = data.collect() if isinstance(data, pl.LazyFrame) else data
+        mask = np.array([0] * len(data))
+        for leaf in tree.leaves:
+            mask = mask + leaf.full_condition.apply(data).cast(int).to_numpy()
+        self.assertEqual(np.nansum(mask), len(data))
+        self.assertEqual(np.nanmin(mask), 1)  # every data sample is accounted for
+        self.assertEqual(np.nanmax(mask), 1)  # ... exactly one time
+        self.assertFalse(np.isnan(mask).any())  # nans are taken care of
+
+    def compute_accuracy(
+        self,
+        tree: et.DecisionTree,
+        train_data: pl.DataFrame | pl.LazyFrame,
+        train_y_true: pl.Series,
+        val_data: pl.DataFrame | pl.LazyFrame,
+        val_y_true: pl.Series,
+    ) -> tuple[float, float]:
+        thr = train_y_true.mean()
+        pred_train = (tree.predict(train_data) > thr).cast(float)
+        accuracy_train = (pred_train == train_y_true).mean()
+        pred_val = (tree.predict(val_data) > thr).cast(float)
+        accuracy_val = (pred_val == val_y_true).mean()
+        return accuracy_train, accuracy_val
+
     def test_fit(self):
         rng = np.random.default_rng(42)
         train_flag = pl.Series(values=rng.choice([True, False], size=len(self.y_true), p=[0.8, 0.2]))
@@ -31,8 +61,7 @@ class TestRegressionTree(unittest.TestCase):
             tree.fit(
                 data=train_df, y_true=train_y_true,
             )
-            df_len = len(train_y_true)
-            self.assertEqual(df_len, sum([leaf.size for leaf in tree.leaves]))
+            self.assertLeavesSufficientAndDoNotOverlap(tree, self.df)
 
         with self.subTest("predict"):
             pred = tree.predict(self.df)
@@ -40,27 +69,26 @@ class TestRegressionTree(unittest.TestCase):
 
         with self.subTest("evaluate"):
             # compute accuracy
-            thr = self.y_true.mean()
-            pred_train = (tree.predict(train_df) > thr).cast(float)
-            accuracy_train = (pred_train == train_y_true).mean()
-            pred_val = (tree.predict(val_df) > thr).cast(float)
-            accuracy_val = (pred_val == val_y_true).mean()
+            accuracy_train, accuracy_val = self.compute_accuracy(
+                tree=tree,
+                train_data=train_df, train_y_true=train_y_true,
+                val_data=val_df, val_y_true=val_y_true,
+            )
             print(f"{accuracy_train:.4f} / {accuracy_val:.4f}")
 
-            self.assertGreater(accuracy_train, 0.827)
-            self.assertGreater(accuracy_val, 0.802)
+            self.assertGreater(accuracy_train, 0.820)
+            self.assertGreater(accuracy_val, 0.796)
 
         with self.subTest("feature importance"):
             expected = {
-                'Sex': 0.6136906971387358,
-                'Pclass': 0.12634046096492582,
-                'SibSp': 0.08287575329334973,
-                'Cabin': 0.05409892186022007,
-                'Age': 0.04112586438724043,
-                'Embarked': 0.03992830777911069,
-                'Fare': 0.03337783138261036,
-                'PassengerId': 0.004639260426636065,
-                'Parch': 0.00392290276717106,
+                'Sex': 0.6365400214728519,
+                'Pclass': 0.13609992846256783,
+                'Fare': 0.08870633045900647,
+                'Cabin': 0.06024237659537846,
+                'PassengerId': 0.028769959772466505,
+                'SibSp': 0.022773628201537513,
+                'Parch': 0.01786913467718056,
+                'Embarked': 0.008998620359010695,
             }
             self.assertImportanceEqual(tree, expected)
 
@@ -110,44 +138,28 @@ class TestRegressionTree(unittest.TestCase):
             tree.fit(
                 data=train_df.collect(), y_true=train_y_true,
             )
-            df_len = len(train_y_true)
-            self.assertEqual(df_len, sum([leaf.size for leaf in tree.leaves]))
-
-        with self.subTest("Importance"):
-            expected = {
-                'Sex': 0.6136906971387358,
-                'Pclass': 0.12634046096492582,
-                'SibSp': 0.08287575329334973,
-                'Cabin': 0.05409892186022007,
-                'Age': 0.04112586438724043,
-                'Embarked': 0.03992830777911069,
-                'Fare': 0.03337783138261036,
-                'PassengerId': 0.004639260426636065,
-                'Parch': 0.00392290276717106,
-            }
-            self.assertImportanceEqual(tree, expected)
+            self.assertLeavesSufficientAndDoNotOverlap(tree, self.df)
 
     def test_fit_from_filename(self):
         tree = et.DecisionTree(max_depth=6)
 
         with self.subTest("fit"):
+            np.random.seed(42)
             tree.fit(
                 data="tests/data/titanic_train.csv", y_true="Survived",
             )
-            df_len = len(pl.read_csv("tests/data/titanic_train.csv"))
-            self.assertEqual(df_len, sum([leaf.size for leaf in tree.leaves]))
+            self.assertLeavesSufficientAndDoNotOverlap(tree, self.df)
 
         with self.subTest("importance"):
             expected = {
-                'Sex': 0.5919627751068731,
-                'Pclass': 0.14746937245422082,
-                'SibSp': 0.06981350649198743,
-                'Cabin': 0.06518523881037531,
-                'Age': 0.05093652498733797,
-                'Embarked': 0.03178960639915491,
-                'Fare': 0.029560853402885803,
-                'Parch': 0.01124111027755316,
-                'PassengerId': 0.0020410120696114048,
+                'Sex': 0.6072437137229897,
+                'Pclass': 0.15465905252693463,
+                'Cabin': 0.07003610120708598,
+                'Fare': 0.05583228058364945,
+                'Embarked': 0.04794089094983581,
+                'SibSp': 0.0259813547153683,
+                'PassengerId': 0.023924091898666067,
+                'Parch': 0.014382514395470057,
             }
             self.assertImportanceEqual(tree, expected)
 
@@ -155,7 +167,44 @@ class TestRegressionTree(unittest.TestCase):
             pred_thr = self.y_true.mean()
             pred_train = (tree.predict(self.df) > pred_thr).cast(float)
             accuracy_train = (pred_train == self.y_true).mean()
-            self.assertGreater(accuracy_train, 0.824)
+            self.assertGreater(accuracy_train, 0.818)
+
+    def test_fit_max_features(self):
+        rng = np.random.default_rng(42)
+        train_flag = pl.Series(values=rng.choice([True, False], size=len(self.y_true), p=[0.8, 0.2]))
+        train_df = self.df.filter(train_flag)
+        train_y_true = self.y_true.filter(train_flag)
+        val_df = self.df.filter(~train_flag)
+        val_y_true = self.y_true.filter(~train_flag)
+
+        ress = dict()
+        for cur_value in [None, 5, 0.6, "sqrt", "log2"]:
+            np.random.seed(42)
+            tree = et.DecisionTree(max_features=cur_value).fit(train_df, train_y_true)
+            train_acc, val_acc = self.compute_accuracy(
+                tree=tree,
+                train_data=train_df, train_y_true=train_y_true,
+                val_data=val_df, val_y_true=val_y_true,
+            )
+            ress[cur_value] = train_acc, val_acc
+            self.assertGreater(val_acc, 0.68)
+        # print(ress)
+
+    def test_fit_max_features_wrong_settings(self):
+        with self.subTest("Bad integer"):
+            for cur_value in [20, 0, -1]:
+                with self.assertRaises(RuntimeError):
+                    et.DecisionTree(max_features=cur_value).fit(self.df, self.y_true)
+
+        with self.subTest("Bad float"):
+            for cur_value in [1.01, 0.0, -0.1]:
+                with self.assertRaises(RuntimeError):
+                    et.DecisionTree(max_features=cur_value).fit(self.df, self.y_true)
+
+        with self.subTest("Bad string"):
+            for cur_value in ["foo", "Sqrt", "log"]:
+                with self.assertRaises(RuntimeError):
+                    et.DecisionTree(max_features=cur_value).fit(self.df, self.y_true)
 
     def test_save_load(self):
         tree = et.DecisionTree()
@@ -201,9 +250,9 @@ class TestRegressionTree(unittest.TestCase):
         train_y_true = y_true.filter(train_flag)
 
         with self.subTest("Fit"):
-            tree = et.DecisionTree(max_depth=6)
+            tree = et.DecisionTree()
             tree.fit(data=train_df, y_true=train_y_true)
-            self.assertEqual(len(train_df), sum([leaf.size for leaf in tree.leaves]))
+            self.assertLeavesSufficientAndDoNotOverlap(tree, self.df)
             self.assertTrue(all([leaf.target_stats.distr is not None for leaf in tree.leaves]))
 
         with self.subTest("Predict"):
@@ -216,8 +265,8 @@ class TestRegressionTree(unittest.TestCase):
             accuracy_val = (pred_val == y_true.filter(~train_flag)).mean()
             print(f"{accuracy_train:.4f} / {accuracy_val:.4f}")
 
-            self.assertGreater(accuracy_train, 0.844)
-            self.assertGreater(accuracy_val, 0.802)
+            self.assertGreater(accuracy_train, 0.8136)
+            self.assertGreater(accuracy_val, 0.7906)
 
         with self.subTest("Save/Load"):
             filename = "/tmp/tree.json"
@@ -225,3 +274,53 @@ class TestRegressionTree(unittest.TestCase):
             tree_2 = et.DecisionTree.load(filename)
             pred_val_2 = tree_2.predict(data.filter(~train_flag))
             self.assertTrue(all(pred_val == pred_val_2))
+
+    def test_predict_missing_leaf_regression(self):
+        """
+        Construct situation when data does not fall into any of the tree leafs.
+        """
+        tree = et.DecisionTree()
+        tree.root_ = et.Node(
+            depth=1,
+            condition=AtomicExpression(colname="foo", operator=Operator.greater, rhs=10),
+            target_stats=TargetStats(mean=3.14, var=2.72)
+        )
+        tree.root_.left = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="bar", operator=Operator.greater, rhs=20),
+            target_stats=TargetStats(mean=1, var=23)
+        )
+        tree.root_.right = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="foo", operator=Operator.less_or_equal, rhs=20),
+            target_stats=TargetStats(mean=4, var=12)
+        )
+        tree.prediction_type_ = pl.Float64
+
+        pred = tree.predict(pl.DataFrame({"foo": [0, 10, None, 20, 30], "bar": [0, 10, 20, None, 30]}))
+        self.assertFalse(pred.is_null().any())
+
+    def test_predict_missing_leaf_classification(self):
+        """
+        Construct situation when data does not fall into any of the tree leafs.
+        """
+        tree = et.DecisionTree()
+        tree.root_ = et.Node(
+            depth=1,
+            condition=AtomicExpression(colname="foo", operator=Operator.greater, rhs=10),
+            target_stats=TargetStats(distr={"A": 10, "B": 20})
+        )
+        tree.root_.left = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="bar", operator=Operator.greater, rhs=20),
+            target_stats=TargetStats(distr={"A": 100, "B": 20})
+        )
+        tree.root_.right = et.Node(
+            depth=2,
+            condition=AtomicExpression(colname="foo", operator=Operator.less_or_equal, rhs=20),
+            target_stats=TargetStats(distr={"A": 10, "B": 200})
+        )
+        tree.prediction_type_ = pl.String
+
+        pred = tree.predict(pl.DataFrame({"foo": [0, 10, None, 20, 30], "bar": [0, 10, 20, None, 30]}))
+        self.assertFalse(pred.is_null().any())

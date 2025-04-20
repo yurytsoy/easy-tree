@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import numpy as np
 import orjson
 import polars as pl
 
 from .logic import ExpressionBuilder
-from .entities import Node, TargetStats
+from .entities import Node, TargetStats, BaseModel
 from .usecases import find_split_cat, find_split_num, read_data, get_col
 
 
-class DecisionTree:
+class DecisionTree(BaseModel):
     """
     Implementation of the CART regression tree with few tweaks for robustness.
 
@@ -23,9 +24,10 @@ class DecisionTree:
         unless it has missing value explicitly on the RHS.
     """
 
-    def __init__(self, max_depth: int = 4, min_leaf_size: int = 10) -> None:
+    def __init__(self, max_depth: int = 4, min_leaf_size: int = 10, max_features: int | float | str | None = None) -> None:
         self.max_depth = max(max_depth, 2)  # ignore values < 2
         self.min_leaf_size = max(min_leaf_size, 1)  # ignore values < 1
+        self.max_features = max_features
         self.root_ = None
         self.feature_importances_ = None
         self.prediction_type_ = None
@@ -56,6 +58,24 @@ class DecisionTree:
         right = self.get_nodes(start.right) if start.right else []
         return [start] + left + right
 
+    def validate_settings(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series):
+        # min_leaf_size.
+        if self.min_leaf_size >= len(y_true):
+            raise RuntimeError("min_leaf_size must be smaller than data size")
+
+        # max_features.
+        if isinstance(self.max_features, int):
+            if self.max_features > len(data.columns) or self.max_features < 1:
+                raise RuntimeError("Integer `max_features` should be in the range [1, number_of_columns]")
+
+        if isinstance(self.max_features, float):
+            if self.max_features > 1.0 or self.max_features <= 0.0:
+                raise RuntimeError("Fractional `max_features` should be in the range (0, 1.0].")
+
+        if isinstance(self.max_features, str):
+            if self.max_features not in ["sqrt", "log2"]:
+                raise RuntimeError("String `max_features` should be one of: ['sqrt, 'log2']")
+
     def fit(self, data: pl.LazyFrame | pl.DataFrame | str, y_true: pl.Series | str) -> DecisionTree:
         """
         Args
@@ -63,6 +83,19 @@ class DecisionTree:
         data : pl.LazyFrame | pl.DataFrame
         y_true : pl.Series
         """
+
+        def get_max_features() -> int:
+            if self.max_features is None:
+                return len(data.columns)
+            if isinstance(self.max_features, int):
+                return self.max_features
+            if isinstance(self.max_features, float):
+                return max(1, int(self.max_features * len(data.columns)))
+            if self.max_features == "sqrt":
+                return round(np.sqrt(len(data.columns)).item())
+            if self.max_features == "log2":
+                return round(np.log2(len(data.columns)).item())
+            raise NotImplementedError(f"Unsupported max_features value ({self.max_features})")
 
         # prepare data and target
         if isinstance(data, str) and isinstance(y_true, str):
@@ -72,13 +105,11 @@ class DecisionTree:
         if y_true.name in data.columns:
             data = data.drop(y_true.name)
 
-        # validate settings.
-        if self.min_leaf_size >= len(y_true):
-            raise RuntimeError("min_leaf_size must be smaller than data size")
+        self.validate_settings(data=data, y_true=y_true)
 
         # training.
         self.prediction_type_ = pl.Float64 if y_true.dtype.is_numeric() else pl.String
-        self.root_ = self._make_node(node=Node(depth=1), data=data, y_true=y_true)
+        self.root_ = self._make_node(node=Node(depth=1), data=data, y_true=y_true, max_features=get_max_features())
 
         # postprocessing: compute `feature_importances_`
         self._compute_feature_importance()
@@ -99,7 +130,7 @@ class DecisionTree:
             in sorted(self.feature_importances_.items(), key=lambda item: item[1], reverse=True)
         }
 
-    def _make_node(self, node: Node, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series) -> Node | None:
+    def _make_node(self, node: Node, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, max_features: int) -> Node | None:
         """
         Finalizes tree node, provided on input.
 
@@ -129,7 +160,8 @@ class DecisionTree:
                 node.target_stats.mean = y_true.mean()
                 node.target_stats.var = y_true.var()
             else:
-                node.target_stats.distr = {cat: count for cat, count in y_true.value_counts().rows()}
+                distr = {cat: count for cat, count in y_true.value_counts().rows()}
+                node.target_stats.distr = {label: distr[label] for label in sorted(distr)}
 
         init_node_stats()
 
@@ -143,12 +175,17 @@ class DecisionTree:
 
         # find the best split
         best_split = None
-        for colname in data.columns:
+        columns = np.random.choice(data.columns, max_features, replace=False)\
+            if max_features < len(data.columns)\
+            else data.columns
+        columns_to_drop = []
+        for colname in columns:
             if data.schema[colname].is_numeric():
                 cur_split = find_split_num(data=data, colname=colname, y_true=y_true)
             else:
                 cur_split = find_split_cat(data=data, colname=colname, y_true=y_true)
-            if cur_split.best_idx is None:
+            if cur_split is None or cur_split.best_split_eval is None:
+                columns_to_drop.append(colname)
                 continue
 
             if best_split is None or best_split.best_split_eval < cur_split.best_split_eval:
@@ -157,25 +194,30 @@ class DecisionTree:
         if best_split is None or best_split.best_split_eval <= 0:
             return node
 
+        if columns_to_drop:
+            if max_features == len(data.columns):
+                max_features = max(1, max_features-len(columns_to_drop))  # update max_features only if it is same as the number of columns
+            data = data.drop(columns_to_drop)
+            max_features = min(max_features, len(data.columns))  # in order to avoid cases, when max_features > number of columns
+
         # note: split score is written to the *parent* node!
         node.target_stats.score_reduction = best_split.best_split_eval
 
-        # make conditions leading to the right and left branches
-        right_condition = best_split.best_split_condition
-        left_condition = ExpressionBuilder(best_split.best_split_condition).not_().current
-
         # make child nodes
+        right_condition = best_split.best_split_condition
         right_mask = right_condition.apply(data)
-        left_mask = left_condition.apply(data)
+        left_mask = ~right_mask
         node.right = self._make_node(
             node=Node(depth=node.depth+1, parent=node),
             data=data.filter(right_mask),
-            y_true=y_true.filter(right_mask)
+            y_true=y_true.filter(right_mask),
+            max_features=max_features,
         )
         node.left = self._make_node(
             node=Node(depth=node.depth+1, parent=node),
             data=data.filter(left_mask),
-            y_true=y_true.filter(left_mask)
+            y_true=y_true.filter(left_mask),
+            max_features = max_features,
         )
 
         # either both left and right nodes are present, or both are absent. Otherwise, the prediction is not possible.
@@ -203,26 +245,30 @@ class DecisionTree:
             else:
                 max_class, max_count = max(leaf.target_stats.distr.items(), key=lambda item: item[1])
                 res = res.set(cur_flag, max_class)
+
+        if res.is_null().any():
+            # In some cases data can contain samples, which are not falling into any of the existing leafs.
+            #   For that case use `root_` as a failover.
+            empty_preds = res.is_null()
+            if self.prediction_type_.is_numeric():
+                res = res.set(empty_preds, self.root_.target_stats.mean)
+            else:
+                max_class, max_count = max(self.root_.target_stats.distr.items(), key=lambda item: item[1])
+                res = res.set(empty_preds, max_class)
+
         return res
 
-    def save(self, filename: str):
-        with open(filename, "wb") as f:
-            f.write(orjson.dumps(
-                {
-                    "root_": self.root_.serialize() if self.root_ is not None else None,
-                    "max_depth": self.max_depth,
-                    "min_leaf_size": self.min_leaf_size,
-                    "feature_importances_": self.feature_importances_,
-                    "prediction_type_": str(self.prediction_type_) if self.prediction_type_ else None,
-                },
-                option=orjson.OPT_SERIALIZE_NUMPY)
-            )
+    def serialize(self) -> dict:
+        return {
+            "root_": self.root_.serialize() if self.root_ is not None else None,
+            "max_depth": self.max_depth,
+            "min_leaf_size": self.min_leaf_size,
+            "feature_importances_": self.feature_importances_,
+            "prediction_type_": str(self.prediction_type_) if self.prediction_type_ else None,
+        }
 
     @staticmethod
-    def load(filename: str) -> DecisionTree:
-        with open(filename, "rb") as f:
-            data = orjson.loads(f.read())
-
+    def deserialize(data: dict) -> DecisionTree:
         res = DecisionTree(
             max_depth=data["max_depth"],
             min_leaf_size=data["min_leaf_size"],

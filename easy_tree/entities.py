@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import numpy as np
+import orjson
 import polars as pl
 
 from .logic import BaseExpression, ExpressionBuilder, AtomicExpression
@@ -71,11 +72,15 @@ class Node:
 
     @staticmethod
     def deserialize(data: dict) -> Node:
+        if data["target_stats"] is not None:
+            target_stats = TargetStats(**data["target_stats"]) if isinstance(data["target_stats"], dict) else data["target_stats"]
+        else:
+            target_stats = None
         res = Node(
             depth=data["depth"],
             condition=BaseExpression.deserialize(data["condition"]),
             size=data["size"],
-            target_stats=TargetStats(**data["target_stats"]) if data["target_stats"] is not None else None,
+            target_stats=target_stats,
             left=Node.deserialize(data["left"]) if data["left"] is not None else None,
             right=Node.deserialize(data["right"]) if data["right"] is not None else None,
         )
@@ -122,10 +127,11 @@ class BaseSplitScoring:
     split_scores: list[float]
     split_points: list[int | float | str | None]
 
-    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: str):
+    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: pl.Series):
         self.data = data
         self.y_true = y_true
-        self.column = column
+        self.y_true_values = y_true.to_numpy()
+        self.column_values = column.to_numpy()
         self.split_conditions = []
         self.split_scores = []
         self.split_points = []
@@ -147,20 +153,20 @@ class BaseSplitScoring:
 
 
 class VarianceScoring(BaseSplitScoring):
-    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: str):
+    def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: pl.Series):
         super().__init__(data, y_true, column=column)
         self.variance = self.y_true.var()
 
     def add_split_condition(self, condition: BaseExpression, split_point: int | float | str | None):
-        true_mask = condition.apply(self.data)
+        true_mask = condition.apply_numpy(self.column_values)
         if true_mask.all() or true_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
         false_mask = ~true_mask
         if false_mask.all() or false_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
 
-        gt_true = self.y_true.filter(true_mask)
-        gt_false = self.y_true.filter(false_mask)
+        gt_true = self.y_true_values[true_mask]
+        gt_false = self.y_true_values[false_mask]
         num_false = len(gt_false)
         num_true = len(self.y_true) - num_false
 
@@ -175,26 +181,40 @@ class VarianceScoring(BaseSplitScoring):
 
 class EntropyScoring(BaseSplitScoring):
     @staticmethod
-    def _entropy(s: pl.Series) -> float:
-        return s.value_counts().select("count").to_series().entropy()
+    def _entropy(s: pl.Series | np.ndarray) -> float:
+        if len(s) <= 1:
+            return 0
+
+        if isinstance(s, pl.Series):
+            return s.value_counts().select("count").to_series().entropy()
+        else:
+            value, counts = np.unique(s, return_counts=True)
+            n_classes = np.count_nonzero(counts)
+            probs = counts / len(s)
+
+            if n_classes <= 1:
+                return 0
+
+            res = -sum(prob * np.log(prob) for prob in probs)
+            return res
 
     def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: str):
         super().__init__(data, y_true, column=column)
-        self.entropy = self._entropy(self.y_true)
+        self.entropy = self._entropy(self.y_true_values)
 
     def add_split_condition(self, condition: BaseExpression, split_point: int | float | str | None):
         """
         Add condition for splitting and compute split score.
         """
-        true_mask = condition.apply(self.data)
+        true_mask = condition.apply_numpy(self.column_values)
         if true_mask.all() or true_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
         false_mask = ~true_mask
         if false_mask.all() or false_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
 
-        ent_true = self._entropy(self.y_true.filter(true_mask))
-        ent_false = self._entropy(self.y_true.filter(false_mask))
+        ent_true = self._entropy(self.y_true_values[true_mask])
+        ent_false = self._entropy(self.y_true_values[false_mask])
         num_false = false_mask.sum()
         num_true = len(self.y_true) - num_false
 
@@ -202,3 +222,31 @@ class EntropyScoring(BaseSplitScoring):
         self.split_conditions.append(condition)
         self.split_scores.append(reduction)
         self.split_points.append(split_point)
+
+
+class BaseModel:
+    feature_importances_: dict[str, float] | None = None
+
+    def fit(self, data: pl.LazyFrame | pl.DataFrame | str, y_true: pl.Series | str) -> BaseModel:
+        pass
+
+    def predict(self, data: pl.LazyFrame) -> pl.Series:
+        pass
+
+    def serialize(self) -> dict:
+        pass
+
+    @classmethod
+    def deserialize(cls, data: dict) -> BaseModel:
+        pass
+
+    def save(self, filename: str):
+        with open(filename, "wb") as f:
+            f.write(orjson.dumps(self.serialize(), option=orjson.OPT_SERIALIZE_NUMPY))
+
+    @classmethod
+    def load(cls, filename: str) -> BaseModel:
+        with open(filename, "rb") as f:
+            data = orjson.loads(f.read())
+
+        return cls.deserialize(data)
