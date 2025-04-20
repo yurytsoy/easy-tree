@@ -130,6 +130,7 @@ class BaseSplitScoring:
     def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: pl.Series):
         self.data = data
         self.y_true = y_true
+        self.y_true_values = y_true.to_numpy()
         self.column_values = column.to_numpy()
         self.split_conditions = []
         self.split_scores = []
@@ -164,8 +165,8 @@ class VarianceScoring(BaseSplitScoring):
         if false_mask.all() or false_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
 
-        gt_true = self.y_true.filter(true_mask)
-        gt_false = self.y_true.filter(false_mask)
+        gt_true = self.y_true_values[true_mask]
+        gt_false = self.y_true_values[false_mask]
         num_false = len(gt_false)
         num_true = len(self.y_true) - num_false
 
@@ -180,12 +181,26 @@ class VarianceScoring(BaseSplitScoring):
 
 class EntropyScoring(BaseSplitScoring):
     @staticmethod
-    def _entropy(s: pl.Series) -> float:
-        return s.value_counts().select("count").to_series().entropy()
+    def _entropy(s: pl.Series | np.ndarray) -> float:
+        if len(s) <= 1:
+            return 0
+
+        if isinstance(s, pl.Series):
+            return s.value_counts().select("count").to_series().entropy()
+        else:
+            value, counts = np.unique(s, return_counts=True)
+            n_classes = np.count_nonzero(counts)
+            probs = counts / len(s)
+
+            if n_classes <= 1:
+                return 0
+
+            res = -sum(prob * np.log(prob) for prob in probs)
+            return res
 
     def __init__(self, data: pl.LazyFrame | pl.DataFrame, y_true: pl.Series, column: str):
         super().__init__(data, y_true, column=column)
-        self.entropy = self._entropy(self.y_true)
+        self.entropy = self._entropy(self.y_true_values)
 
     def add_split_condition(self, condition: BaseExpression, split_point: int | float | str | None):
         """
@@ -198,8 +213,8 @@ class EntropyScoring(BaseSplitScoring):
         if false_mask.all() or false_mask.sum() <= 1:
             return  # one of the splits is empty or contains only 1 element.
 
-        ent_true = self._entropy(self.y_true.filter(true_mask))
-        ent_false = self._entropy(self.y_true.filter(false_mask))
+        ent_true = self._entropy(self.y_true_values[true_mask])
+        ent_false = self._entropy(self.y_true_values[false_mask])
         num_false = false_mask.sum()
         num_true = len(self.y_true) - num_false
 
