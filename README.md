@@ -1,6 +1,6 @@
 # easy-tree
 
-Decision tree algorithm implementation for regression and classification with minimal boilerplate code. 
+Decision tree and Random Forest algorithms implementation for regression and classification with minimal boilerplate code. 
 * Does not require data transform and can work natively with missing values.
 * Supports lazy and eager data frames from [polars](https://pola.rs/).
 * Prefers splits that lead to balanced tree.
@@ -19,7 +19,7 @@ The API resembles that of [scikit-learn](https://scikit-learn.org/stable/) and s
 
 # Quick start
 
-## Training a regression tree model
+## Training a regression model
 
 ```python
 import easy_tree as et
@@ -35,16 +35,30 @@ tree = et.DecisionTree()
 tree.fit(data=df, y_true=y_true)
 
 # compute predictions and MSE.
-pred = tree.predict(df)
-mse = (pred - y_true).pow(2).mean()
-print(f"MSE = {mse}")
+pred_tree = tree.predict(df)
+mse_tree = (pred_tree - y_true).pow(2).mean()
+print(f"MSE, DT = {mse_tree}")
+
+# =================================
+# Random Forest regressor
+
+rf = et.RandomForest()
+rf.fit(data=df, y_true=y_true)
+pred_rf = rf.predict(df)
+mse_rf = (pred_rf - y_true).pow(2).mean()
+print(f"MSE, RF = {mse_rf}")
 ```
 
 Currently, the following parameters are exposed for tuning:
 * `max_depth` -- maximal tree depth. Default value is 4.
 * `min_leaf_size` -- minimal number of samples in the leaf. Default is 10.
+* `max_features` -- maximal number of features, that can be used for building a tree. 
+The values are the same as that of in the sklearn's [Decision Tree Regressor](https://scikit-learn.org/stable/modules/generated/sklearn.tree.DecisionTreeRegressor.html#sklearn.tree.DecisionTreeRegressor) (same for Classifier).
 
-## Training a classification tree
+Additionally `RandomForest` supports setting `n_jobs` that specifies the number of threads,
+which are going to be used for the model training.
+
+## Training a classification model
 
 If target series has dtype `String` then classification model is trained.
 
@@ -62,14 +76,26 @@ tree = et.DecisionTree()
 tree.fit(data=df, y_true=y_true)
 
 # compute prediction and accuracy
-pred = tree.predict(df)  # prediction has dtype `String`
-accuracy = (pred == y_true).mean()
-print(f"Accuracy = {accuracy}")
+pred_tree = tree.predict(df)  # prediction has dtype `String`
+accuracy_tree = (pred_tree == y_true).mean()
+print(f"Accuracy, DT = {accuracy_tree}")
+
+# =================================
+# Random Forest classifier
+
+# train a random forest using the same class
+rf = et.RandomForest()
+rf.fit(data=df, y_true=y_true)
+
+# compute prediction and accuracy
+pred_rf = tree.predict(df)  # prediction has dtype `String`
+accuracy_rf = (pred_rf == y_true).mean()
+print(f"Accuracy, RF = {accuracy_rf}")
 ```
 
 ## Feature importances
 
-Feature importances are available via the `feature_importances_` property.
+Feature importances are available via the `feature_importances_` property for all models.
 ```python
 # feature importances
 print({name: f"{importance:.3f}" for name, importance in tree.feature_importances_.items()})
@@ -135,7 +161,7 @@ masked_df = df.filter(mask)  # subset of the data samples, that "belong" to the 
 
 ## Save and load model as json
 
-Use methods `save` and `load` in order to save and load the decision tree
+Use methods `save` and `load` in order to save and load the decision tree or random forest.
 
 ```python
 tree.save("tree.json")
@@ -151,22 +177,32 @@ In that case the type of the model (regression or classification) is defined bas
 
 ```python
 tree = et.DecisionTree()
-tree.fit(data="tests/data/titanic_train.csv", y_true="Fare")  # will train a regression, as "Fare" is auto-detected as numerical column.
+tree.fit(data="tests/data/titanic_train.csv", y_true="Fare")  # will train a regression model, as "Fare" is auto-detected as numerical column.
+
+rf = et.RandomForest()
+rf.fit(data="tests/data/titanic_train.csv", y_true="Fare")  # will train a regression model, as "Fare" is auto-detected as numerical column.
 
 # -----------------
 
 tree = et.DecisionTree()
-tree.fit(data="tests/data/titanic_train.csv", y_true="Survived")  # will train a regression, as "Survived" is auto-detected as numerical column
+tree.fit(data="tests/data/titanic_train.csv", y_true="Survived")  # will train a regression model, as "Survived" is auto-detected as numerical column
+
+rf = et.RandomForest()
+rf.fit(data="tests/data/titanic_train.csv", y_true="Survived")  # will train a regression model, as "Survived" is auto-detected as numerical column
 
 # -----------------
 
 tree = et.DecisionTree()
-tree.fit(data="tests/data/titanic_train.csv", y_true="Embarked")  # will train a classification tree, as "Embarked" is auto-detected as String-valued column
+tree.fit(data="tests/data/titanic_train.csv", y_true="Embarked")  # will train a classification model, as "Embarked" is auto-detected as String-valued column
+
+rf = et.RandomForest()
+rf.fit(data="tests/data/titanic_train.csv", y_true="Embarked")  # will train a classification model, as "Embarked" is auto-detected as String-valued column
 ```
 
 One-liner is also possible:
 ```python
 tree = et.DecisionTree().fit(data="tests/data/titanic_train.csv", y_true="Embarked")
+rf = et.RandomForest().fit(data="tests/data/titanic_train.csv", y_true="Embarked")
 ```
 
 ## Small tool to handle logical expressions
