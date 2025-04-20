@@ -80,7 +80,7 @@ class Node:
             depth=data["depth"],
             condition=BaseExpression.deserialize(data["condition"]),
             size=data["size"],
-            target_stats=target_stats, # TargetStats(**data["target_stats"]) if data["target_stats"] is not None else None,
+            target_stats=target_stats,
             left=Node.deserialize(data["left"]) if data["left"] is not None else None,
             right=Node.deserialize(data["right"]) if data["right"] is not None else None,
         )

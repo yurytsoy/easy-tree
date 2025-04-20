@@ -76,19 +76,19 @@ class TestRegressionTree(unittest.TestCase):
             )
             print(f"{accuracy_train:.4f} / {accuracy_val:.4f}")
 
-            self.assertGreater(accuracy_train, 0.810)
-            self.assertGreater(accuracy_val, 0.773)
+            self.assertGreater(accuracy_train, 0.820)
+            self.assertGreater(accuracy_val, 0.796)
 
         with self.subTest("feature importance"):
             expected = {
-                'Sex': 0.6679081775805736,
-                'Pclass': 0.13750220987739162,
-                'Fare': 0.07150023687560125,
-                'Cabin': 0.05887837713232438,
-                'PassengerId': 0.030081550266882327,
-                'SibSp': 0.020981015889506866,
-                'Parch': 0.008684832763910761,
-                'Embarked': 0.0044635996138091385,
+                'Sex': 0.6365400214728519,
+                'Pclass': 0.13609992846256783,
+                'Fare': 0.08870633045900647,
+                'Cabin': 0.06024237659537846,
+                'PassengerId': 0.028769959772466505,
+                'SibSp': 0.022773628201537513,
+                'Parch': 0.01786913467718056,
+                'Embarked': 0.008998620359010695,
             }
             self.assertImportanceEqual(tree, expected)
 
@@ -152,14 +152,14 @@ class TestRegressionTree(unittest.TestCase):
 
         with self.subTest("importance"):
             expected = {
-                'Sex': 0.6445801824625548,
-                'Pclass': 0.1605773859463015,
-                'Cabin': 0.07097931642521112,
-                'Embarked': 0.041554119567714064,
-                'Fare': 0.04099654751628022,
-                'PassengerId': 0.01195148817993547,
-                'SibSp': 0.019732239166551025,
-                'Parch': 0.009628720735451818,
+                'Sex': 0.6072437137229897,
+                'Pclass': 0.15465905252693463,
+                'Cabin': 0.07003610120708598,
+                'Fare': 0.05583228058364945,
+                'Embarked': 0.04794089094983581,
+                'SibSp': 0.0259813547153683,
+                'PassengerId': 0.023924091898666067,
+                'Parch': 0.014382514395470057,
             }
             self.assertImportanceEqual(tree, expected)
 
@@ -167,7 +167,7 @@ class TestRegressionTree(unittest.TestCase):
             pred_thr = self.y_true.mean()
             pred_train = (tree.predict(self.df) > pred_thr).cast(float)
             accuracy_train = (pred_train == self.y_true).mean()
-            self.assertGreater(accuracy_train, 0.8069)
+            self.assertGreater(accuracy_train, 0.818)
 
     def test_fit_max_features(self):
         rng = np.random.default_rng(42)
