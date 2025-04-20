@@ -96,34 +96,6 @@ class RandomForest(BaseModel):
             return self._predict_regression(data)
         else:
             return self._predict_classification(data)
-            # # classification => collect distribution of classes
-            # class_counts = dict()
-            # for tree in self.trees_:
-            #     tree_pred = tree.predict(data)
-            #     for class_label in tree_pred.unique():
-            #         if class_label not in class_counts:
-            #             class_counts[class_label] = (tree_pred == class_label).cast(int)
-            #         else:
-            #             class_counts[class_label] = class_counts[class_label] + (tree_pred == class_label).cast(int)
-            #
-            # # The tie-breaking is unstable, so that class with maximal counts can be determined ...
-            # #   khm, indeterministically.
-            # # In order to fix that, the classes are sorted by their frequency, the most frequent class going first.
-            # def get_ordered_training_class_probabilities() -> dict[str, float]:
-            #     res = defaultdict(lambda: 0)
-            #     for tree in self.trees_:
-            #         for label, count in tree.root_.target_stats.distr.items():
-            #             res[label] += count
-            #     total = sum(res.values())
-            #     return {label: count / total for label, count in res.items()}
-            #
-            # probs = get_ordered_training_class_probabilities()
-            # classes = list(probs)
-            # pred = (pl.DataFrame([class_counts[label] for label in classes if label in class_counts])
-            #         .map_rows(lambda row: classes[np.argmax(row)])
-            #         .rename({"map": "prediction"})
-            #         .to_series())
-            # return pred
 
     def _predict_regression(self, data: pl.DataFrame | pl.LazyFrame) -> pl.Series:
         # regression => compute average prediction
