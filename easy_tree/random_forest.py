@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import dataclasses
 from collections import defaultdict
 
@@ -22,7 +22,7 @@ class RandomForest(BaseModel):
     n_estimators: int
     trees_: list[DecisionTree] | None
 
-    def __init__(self, n_estimators: int = 100, max_depth: int = 5, min_leaf_size: int = 10, max_features: int | float | str | None = 1.0, n_jobs: int | None = None):
+    def __init__(self, n_estimators: int = 100, max_depth: int = 5, min_leaf_size: int = 10, max_features: int | float | str | None = 1.0, n_jobs: int | None = 1):
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.min_leaf_size = min_leaf_size
@@ -44,27 +44,20 @@ class RandomForest(BaseModel):
         self.trees_ = []
 
         # train trees
-        self.oob_counts_ = np.zeros(len(y_true))
-        seeds = np.random.randint(10000, size=self.n_estimators)
-        for k in range(self.n_estimators):
-            res = self._fit_tree(data, y_true, seeds[k])
-            self.trees_.append(res.tree)
-            self.oob_counts_[res.oob_idxs] += 1
-
-        # Note: parallel execution with ThreadPoolExecutor does not provide improvement and
-        #   conversely yields longer runtime (the example is below) even though CPU load does increase (by ~50-100%).
+        # Note: parallel execution with ThreadPoolExecutor and ProcessPoolExecutor does not provide much improvement and
+        #   conversely yields longer runtime (the example is below) even though CPU load does increase (up to ~200-250%).
         #   The exact reason for the lack of speedup is unclear and would be good to address in the future.
         #   More broad testing against datasets of different sizes and different RF settings is required.
-        # with ThreadPoolExecutor(max_workers=16) as executor:
-        #     seeds = np.random.randint(10000, size=self.n_estimators)
-        #     future_to_trees = [executor.submit(self._fit_tree, data, y_true, seed) for k, seed in zip(range(self.n_estimators), seeds)]
-        #     for future in as_completed(future_to_trees):
-        #         try:
-        #             res = future.result()
-        #             self.trees_.append(res.tree)
-        #             self.oob_counts_[res.oob_idxs] += 1
-        #         except Exception as e:
-        #             print(e)
+        self.oob_counts_ = np.zeros(len(y_true))
+        seeds = np.random.randint(10000, size=self.n_estimators)
+        with ThreadPoolExecutor(max_workers=self.n_jobs) as executor:
+            futures = []
+            for k, seed in zip(range(self.n_estimators), seeds):
+                futures.append(executor.submit(self._fit_tree, data.clone(), y_true.clone(), seed))
+            for future in futures:
+                res = future.result()
+                self.trees_.append(res.tree)
+                self.oob_counts_[res.oob_idxs] += 1
 
         # compute feature importance as average importance
         self.feature_importances_ = defaultdict(lambda: 0)
