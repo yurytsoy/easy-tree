@@ -1,3 +1,5 @@
+[![Python application](https://github.com/yurytsoy/easy-tree/actions/workflows/python-app.yml/badge.svg?branch=master)](https://github.com/yurytsoy/easy-tree/actions/workflows/python-app.yml)
+
 # easy-tree
 
 Decision tree and Random Forest algorithms implementation for regression and classification with minimal boilerplate code. 
