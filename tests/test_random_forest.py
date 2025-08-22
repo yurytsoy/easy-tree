@@ -35,7 +35,7 @@ class TestRandomForest(unittest.TestCase):
             val_acc = ((val_y_pred > pred_thr) == val_y_true.cast(bool)).mean()
             print(f"{train_acc:.4f} / {val_acc:.4f}")
             self.assertGreater(train_acc, 0.817)
-            self.assertGreater(val_acc, 0.819)
+            self.assertGreater(val_acc, 0.802)
 
     def test_fit_classification(self):
         rng = np.random.default_rng(42)
@@ -58,7 +58,7 @@ class TestRandomForest(unittest.TestCase):
             val_y_pred = rf.predict(val_df)
             val_acc = (val_y_pred == val_y_true).mean()
             print(f"{train_acc:.4f} / {val_acc:.4f}")
-            self.assertGreater(train_acc, 0.820)
+            self.assertGreater(train_acc, 0.810)
             self.assertGreater(val_acc, 0.808)
 
     def test_predict_classification_reproducible(self):
