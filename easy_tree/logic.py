@@ -133,13 +133,13 @@ class AtomicExpression(BaseExpression):
             if self.rhs:
                 return xs == self.rhs
             else:
-                return np.isnan(xs) if np.issubdtype(xs.dtype, np.number) else xs == None
+                return np.isnan(xs) if np.issubdtype(xs.dtype, np.number) else xs == None  # noqa
 
         if self.operator == Operator.not_equal:
             if self.rhs:
                 return xs != self.rhs
             else:
-                return ~np.isnan(xs) if np.issubdtype(xs.dtype, np.number) else xs != None
+                return ~np.isnan(xs) if np.issubdtype(xs.dtype, np.number) else xs != None  # noqa
 
     def not_(self) -> AtomicExpression:
         not_operator = {
