@@ -3,7 +3,7 @@
 # easy-tree
 
 Decision tree and Random Forest algorithms implementation for regression and classification with minimal boilerplate code. 
-* Does not require data transform and can work natively with missing values.
+* Does not require data transform and can work natively with missing values and categorical variables. No need in One-Hot Encoding.
 * Supports lazy and eager data frames from [polars](https://pola.rs/).
 * Prefers splits that lead to balanced tree.
 * Single class for both classification and regression.
